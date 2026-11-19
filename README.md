@@ -59,3 +59,7 @@ Other limits: polling rather than WebSockets, API-only moderator tools, no passw
 `/join 9q8yy`, `/out`, `/in b`, `/here`, `/nick Your Name` (guests), `/help`.
 
 Enter sends; Shift+Enter creates a newline. View older messages pauses polling; return to live to resume. Local sessions and limits reset with the local API process.
+
+## Geographic room descriptions
+
+The offline Python [gazetteer builder and read-only runtime](packages/room-descriptions/README.md) precompute geographic anchors for rooms at precisions 1–4 and resolve precision 5 through its parent. See [build measurements](docs/room-descriptions.md). This module is independent of the chat API deployment.

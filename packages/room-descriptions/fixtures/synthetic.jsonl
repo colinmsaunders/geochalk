@@ -1,0 +1,18 @@
+{"source":"synthetic","source_id":"1","name":"San Francisco","latitude":37.7749,"longitude":-122.4194,"kind":"city","population":800000}
+{"source":"synthetic","source_id":"2","name":"Berkeley","latitude":37.8715,"longitude":-122.273,"kind":"city","population":120000}
+{"source":"synthetic","source_id":"3","name":"Outer Richmond","latitude":37.7777,"longitude":-122.495,"kind":"neighbourhood"}
+{"source":"synthetic","source_id":"4","name":"New York City","latitude":40.7128,"longitude":-74.006,"kind":"city","population":8300000}
+{"source":"synthetic","source_id":"5","name":"London","latitude":51.5074,"longitude":-0.1278,"kind":"city","population":9000000}
+{"source":"synthetic","source_id":"6","name":"Tokyo","latitude":35.6762,"longitude":139.6503,"kind":"city","population":14000000}
+{"source":"synthetic","source_id":"7","name":"Bishop","latitude":37.3614,"longitude":-118.3997,"kind":"town","population":3800}
+{"source":"synthetic","source_id":"8","name":"Tamanrasset","latitude":22.785,"longitude":5.522,"kind":"town","population":92000}
+{"source":"synthetic","source_id":"9","name":"Longyearbyen","latitude":78.2232,"longitude":15.6469,"kind":"town","population":2400}
+{"source":"synthetic","source_id":"10","name":"Dateline Village","latitude":0,"longitude":179.95,"kind":"town","population":1500}
+{"source":"synthetic","source_id":"11","name":"Pacific Ocean","latitude":0,"longitude":-150,"kind":"ocean","prominence":1,"geometry":{"type":"MultiPolygon","coordinates":[[[[-180,-60],[-100,-60],[-100,60],[-180,60],[-180,-60]]],[[[130,-60],[180,-60],[180,60],[130,60],[130,-60]]]]}}
+{"source":"synthetic","source_id":"12","name":"California","latitude":37,"longitude":-120,"kind":"state","prominence":0.8}
+{"source":"synthetic","source_id":"13","name":"Sahara","latitude":24,"longitude":15,"kind":"region","prominence":0.8,"geometry":{"type":"Polygon","coordinates":[[[-15,18],[35,18],[35,32],[-15,32],[-15,18]]]}}
+{"source":"synthetic","source_id":"14","name":"Arctic Ocean","latitude":89,"longitude":0,"kind":"ocean","prominence":0.9,"geometry":{"type":"Polygon","coordinates":[[[-180,80],[180,80],[180,90],[-180,90],[-180,80]]]}}
+{"source":"synthetic","source_id":"15","name":"United States","latitude":39,"longitude":-98,"kind":"country","population":330000000}
+{"source":"synthetic","source_id":"16","name":"Atlantic Ocean","latitude":0,"longitude":-30,"kind":"ocean","prominence":0.9}
+{"source":"synthetic","source_id":"17","name":"Indian Ocean","latitude":-30,"longitude":75,"kind":"ocean","prominence":0.9}
+{"source":"synthetic","source_id":"18","name":"Antarctica","latitude":-85,"longitude":0,"kind":"continent","prominence":0.9}

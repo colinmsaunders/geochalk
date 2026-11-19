@@ -1,0 +1,55 @@
+# Geographic room description database — measured build
+
+Built locally on 2026-11-16. The complete [Python implementation and regeneration instructions](../packages/room-descriptions/README.md) are in `packages/room-descriptions`. The chat API and AWS deployment were not modified.
+
+## Artifact
+
+`artifacts/room-descriptions/geochalk-gazetteer-v1-20261116.sqlite` is the read-only runtime database. The versioned ZIP beside it bundles the database, checksum/build manifest, validation results, source manifest and attribution. Generated data is ignored by Git.
+
+- Named places: **1,000,000**, selected from **1,316,867** canonical records after deduplication.
+- Anchors: **1,082,400**, exactly 32 + 1,024 + 32,768 + 1,048,576. No initial level-5 entries.
+- SQLite size: **60,313,600 bytes**, or **60.31 MB / 57.52 MiB**.
+- Generation time from normalized inputs: **125.11 seconds**, including staging, deduplication, selection, indexing, ANALYZE, VACUUM and integrity/coverage checks. Downloads and normalization are additional.
+- SHA-256: `0d60fc229665223809c775dbedc16fa879b41128cbb77d635d28125276f97d59`.
+
+## Lookup benchmark
+
+10,000 deterministic random precision-5 requests, including recursive level-4 lookup. Times include input validation. These are local machine measurements, not Lambda latency guarantees.
+
+| Operation                                      |     Median |        p95 |
+| ---------------------------------------------- | ---------: | ---------: |
+| LRU disabled, reused connection                |  22.459 μs |  30.166 μs |
+| Warm LRU, reused connection                    |   3.042 μs |   4.083 μs |
+| Open connection + lookup + close (100 samples) | 155.250 μs | 234.542 μs |
+
+The OS page cache was not flushed. Fresh-connection measurements represent application-cold lookups, **not physical cold-disk reads**. Runtime does not import build dependencies or make network calls.
+
+Environment: numpy 2.5.5, python 3.13.18, scipy 1.18.1, shapely 2.2.0, sqlite 3.54.1. Build versions are pinned in `requirements-build.lock` and recorded inside SQLite metadata.
+
+## Actual sample descriptions
+
+These are generated from the requested room geometry; they are not copied from the illustrative requirements. All entries below use precision 5 with its parent anchor. The parent can name a different nearby town rather than the exact city/neighborhood requested.
+
+| Sample location  | Generated description                         |
+| ---------------- | --------------------------------------------- |
+| San Francisco    | 7.3 square miles northeast of Daly City       |
+| Outer Richmond   | 7.3 square miles northwest of Daly City       |
+| New York         | 7 square miles around New York City           |
+| London           | 5.7 square miles southeast of Finchley        |
+| Tokyo            | 7.5 square miles northwest of Shinagawa       |
+| Rural California | 7.3 square miles around Bishop                |
+| Sahara           | 8.4 square miles north of Jabal Bin Ghunaymah |
+| Pacific          | 9.2 square miles northeast of Polynesia       |
+| Dateline east    | 9.2 square miles southwest of Pacific Ocean   |
+| Dateline west    | 9.2 square miles west of Pacific Ocean        |
+| High north       | 0.16 square miles north of Arctic Ocean       |
+| High south       | 0.16 square miles south of West Antarctica    |
+
+## Validation and limitations
+
+- All 20 unit/integration tests passed, including two identical full-coverage synthetic builds producing identical SQLite bytes, an optional exact level-5 build, read-only enforcement, fallback, thread reuse, indexed SQL, no-network operation, source ingestion and geometry.
+- Full real database integrity and reference checks passed. Complete unique key intervals prove every level-1–4 room exists; every one of the 33,554,432 level-5 prefixes therefore has an existing parent. The validator also checked 10,000 sampled lookups and global named scenarios.
+- Both SQL joins use `INTEGER PRIMARY KEY` lookup. The published database contains no build spatial indexes or source provenance payloads.
+- OSM source: **OSMNames v2.0.4, an older snapshot**, filtered to the six requested settlement/neighborhood types. This should be refreshed with current OSM PBF/JSONL before relying on current neighborhood coverage. GeoNames cities1000 and Natural Earth v5.1.2 are also included; exact source digests are in the manifest.
+- Geographic deduplication and bounded nearest-candidate ranking are heuristics. Generalized regional boundaries improve coarse anchors, but runtime point-only records never assert `in`. Population/type are build-only; runtime Place returns `population=None`, `kind="unknown"` per the compact schema.
+- No new AWS deployment or public get-description HTTP endpoint was created. The requested Python API and deployable data artifact are ready; Lambda packaging options are documented.

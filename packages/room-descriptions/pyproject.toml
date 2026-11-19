@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "geochalk-room-descriptions"
+version = "1.0.0"
+description = "Offline geographic room anchors and read-only SQLite descriptions"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+build = ["numpy>=2,<3", "scipy>=1.14,<2", "shapely>=2.1,<3"]
+pbf = ["osmium>=4,<5"]
+
+[project.scripts]
+geochalk-geo-build = "geochalk_geo.build:main"
+geochalk-geo-normalize = "geochalk_geo.ingest:main"
+geochalk-geo-validate = "geochalk_geo.validate:main"
+
+[tool.setuptools.packages.find]
+include = ["geochalk_geo*"]

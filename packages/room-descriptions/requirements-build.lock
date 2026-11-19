@@ -1,0 +1,4 @@
+# Reference build environment; runtime has no third-party dependencies.
+numpy==2.5.5
+scipy==1.18.1
+shapely==2.2.0

@@ -13,3 +13,8 @@ cdk-west-outputs.json
 geochalk-*-outputs.json
 legacy-cdk*-outputs.json
 legacy-cdk.out/
+
+# Generated gazetteer sources, build provenance, versioned databases and virtualenvs
+artifacts/room-descriptions/
+packages/room-descriptions/.venv/
+*.egg-info/
