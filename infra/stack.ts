@@ -252,7 +252,7 @@ export class ChatStack extends cdk.Stack {
         validation: acm.CertificateValidation.fromDns(zone),
       });
     }
-    // Underscore-prefixed rooms are separate from QR and other site routes.
+    // @-prefixed rooms are separate from QR and other site routes.
     const rewrite = new cloudfront.Function(this, "SpaRoutes", {
       code: cloudfront.FunctionCode.fromInline(
         String.raw`function handler(event) {
@@ -269,7 +269,7 @@ export class ChatStack extends cdk.Stack {
     };
   }
   if (r.uri === '/about' || r.uri === '/about/') r.uri = '/about.html';
-  else if (r.uri === '/' || /^\/_([0-9bcdefghjkmnpqrstuvwxyz]{0,8})\/?$/.test(r.uri)) r.uri = '/index.html';
+  else if (r.uri === '/' || /^\/@([0-9bcdefghjkmnpqrstuvwxyz]{0,8})\/?$/.test(r.uri)) r.uri = '/index.html';
   return r;
 }`,
       ),

@@ -25,7 +25,7 @@ npm run synth
 
 ## Included in Milestone 1
 
-- React/Vite frontend with rooms at `/_<geohash>` (for example `/_9q8yu`) and Earth at `/_`, child and parent navigation, optional browsing geolocation, required fresh posting location, activity-based smart zoom, and a responsive chat interface.
+- React/Vite frontend with rooms at `/@<geohash>` (for example `/@9q8yu`) and Earth at `/@`, child and parent navigation, optional browsing geolocation, required fresh posting location, activity-based smart zoom, and a responsive chat interface.
 - Public room reads, guest sessions, optional Cognito email accounts, slash commands, and HTTP polling every five seconds while visible. Guest display names are not unique.
 - Server-derived precision-8 posting origins, fresh location checks, persistent HttpOnly guest cookies, and short-lived coarse observations for motion checks.
 - Nine unconditional denormalized writes into independent rooms. Each room has 256 random hexadecimal slots; collisions replace posts without chronological eviction or post TTL.

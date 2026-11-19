@@ -77,12 +77,12 @@ describe("AWS deployment guardrails", () => {
     const route = new Function(`${routing}; return handler;`)();
     for (const uri of [
       "/",
-      "/_",
-      "/_/",
-      "/_9q8yu",
-      "/_9q8yu/",
-      "/_qr",
-      "/_9q8yyk8y",
+      "/@",
+      "/@/",
+      "/@9q8yu",
+      "/@9q8yu/",
+      "/@qr",
+      "/@9q8yyk8y",
     ])
       expect(route({ request: { uri } }).uri).toBe("/index.html");
     for (const uri of ["/about", "/about/"])
@@ -97,11 +97,11 @@ describe("AWS deployment guardrails", () => {
       "/about/missing",
       "/9q8yu",
       "/g/9q8yu",
-      "/__",
-      "/_a",
-      "/_QR",
-      "/_9q8yyk8yy",
-      "/_9q8yu/extra",
+      "/@_",
+      "/@a",
+      "/@QR",
+      "/@9q8yyk8yy",
+      "/@9q8yu/extra",
     ])
       expect(route({ request: { uri } }).uri).toBe(uri);
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
