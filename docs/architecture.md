@@ -6,7 +6,7 @@ The rename restarts architecture/schema numbering at v1. It preserves the predec
 
 ## Nine geographic levels
 
-A room is a geohash prefix of length 0–8. The zero-length prefix is represented by `_` in URLs, API parameters and DynamoDB partition keys; `/_` is the global room. Empty strings remain invalid room identifiers. A new post always has a precision-8 origin, regardless of the room being viewed. For origin `c23nb62w`, the nine copies are:
+A room is a geohash prefix of length 0–8. Browser room URLs use an underscore marker: `/_` is Earth and `/_9q8yu` is room `9q8yu`. This separates rooms such as `/_qr` from QR URLs such as `/qr` and leaves other top-level paths available for site pages. API parameters and DynamoDB partition keys still use the plain geohash, with `_` representing the zero-length global prefix. Empty strings remain invalid room identifiers. A new post always has a precision-8 origin, regardless of the room being viewed. For origin `c23nb62w`, the nine copies are:
 
 | Precision | Room partition |
 | --------- | -------------- |

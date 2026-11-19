@@ -38,6 +38,8 @@ Set `backendTarget` from the actual western outputs: `region: us-west-2`, `apiId
 
 For subsequent coordinated updates:
 
+The static `/about` page displays `rev: <short Git hash>`, stamped from `git rev-parse --short HEAD` during the frontend build. Commit the release changes before building and deploying so this identifies the deployed revision. `npm run deploy` rebuilds the assets before publication; the hash does not require a runtime API call.
+
 ```sh
 npx cdk diff GeochalkWest Geochalk --no-change-set
 npm run deploy
@@ -45,13 +47,13 @@ npm run deploy
 
 If western resource outputs change, refresh `backendTarget` before deploying the edge stack. Keep `eastReadOnly: true` and `westReadOnly: false`. Both regions are bootstrapped. Output files are ignored and named `geochalk-edge-outputs.json` and `geochalk-west-outputs.json`; prior local snapshots use the `legacy-` prefix.
 
-S3 is private with Origin Access Control restricted to the new distribution. The west stack manages its bucket policy; the edge stack imports that bucket. `/api/*` is uncached and forwards Authorization, cookies and the request header. QR routes matching `^/q[a-zA-Z0-9_]*` log a page turn and return `302 Location: /` with `Cache-Control: no-store` before geographic routing. The first QR URL is `https://geochalk.com/qr`. This is deliberately a prefix match: every path beginning with lowercase `/q`, including geographic prefixes and paths with additional suffixes, is reserved for QR redirects. Other valid geographic room paths and `/` rewrite to the SPA. The stack does not configure `www` or alter registrar delegation.
+S3 is private with Origin Access Control restricted to the new distribution. The west stack manages its bucket policy; the edge stack imports that bucket. `/api/*` is uncached and forwards Authorization, cookies and the request header. QR routes matching `^/q[a-zA-Z0-9_]*` log a page turn and return `302 Location: /` with `Cache-Control: no-store`. The first QR URL is `https://geochalk.com/qr`. This is deliberately a prefix match: every path beginning with lowercase `/q`, including paths with additional suffixes, is reserved for QR redirects. Browser rooms use `/_<geohash>` with 1–8 geohash characters, or `/_` for Earth, and optionally a trailing slash. These paths and `/` rewrite to the SPA; other top-level paths remain available for site pages. Thus `/_qr` opens a room while `/qr` redirects. Bare geohash paths such as `/9q8yu` no longer rewrite to the SPA. Deploy frontend assets and edge routing together using the western-then-edge sequence. The stack does not configure `www` or alter registrar delegation.
 
 QR logs are JSON records with `event: "qr_page_turn"`, the request `path`, and HTTP `method`; query strings, cookies, and IP addresses are omitted. The `SpaRoutes` CloudFront function emits these on each request. Production logs appear in `/aws/cloudfront/function/<physical-function-name>` in `us-east-1` ([AWS logging reference](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/edge-functions-logs.html)). Local `npm run dev` uses the same redirect and writes the record to the web server console. Deploy `Geochalk` to publish routing changes; the handler does not require database changes.
 
 ## Verification
 
-Check HTTPS, `/config.json`, built assets, `/_`, a geographic deep link, `/api/health`, room reads and smart zoom. Confirm the production config and CloudFront origins use the new western resources. Check secure guest cookies, authenticated `/me`, missing-auth and invalid-location rejection, and request-header protection without publishing test posts.
+Check HTTPS, `/config.json`, built assets, `/_`, `/_9q8yu`, `/_qr`, the `/qr` redirect, `/api/health`, room reads and smart zoom. Confirm the production config and CloudFront origins use the new western resources. Check secure guest cookies, authenticated `/me`, missing-auth and invalid-location rejection, and request-header protection without publishing test posts.
 
 Browser geolocation, successful posting/deletion/reporting, account email delivery and load testing remain manual acceptance checks. Check permission denial, stale/future fixes, low accuracy, geographic jumps, random collisions, delayed writes, partial fanout and conditional deletion. Do not log request bodies or raw coordinates.
 

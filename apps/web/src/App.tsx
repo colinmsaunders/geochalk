@@ -15,6 +15,7 @@ import {
 import { api, config, ensureGuest, sessionKey } from "./api";
 import { Auth } from "./Auth";
 import { freshPostingLocation } from "./location";
+import { roomFromPath, roomPath } from "./routes";
 const places = [
   { name: "San Francisco", room: "9q8yy", label: "Bayside conversations" },
   { name: "New York", room: "dr5ru", label: "The city, in conversation" },
@@ -33,8 +34,7 @@ const levels = [
   "A little closer",
 ];
 function initialRoom() {
-  const path = location.pathname.slice(1).replace(/\/$/, "");
-  return roomSchema.safeParse(path).success ? path : "";
+  return roomFromPath(location.pathname);
 }
 export default function App() {
   const [room, setRoom] = useState(initialRoom);
@@ -60,7 +60,7 @@ export default function App() {
   const end = useRef<HTMLDivElement>(null);
   const generation = useRef(0);
   function go(next: string) {
-    history.pushState({}, "", `/${next}`);
+    history.pushState({}, "", roomPath(next));
     historyMode.current = false;
     setHistoryPage(false);
     setRoom(next);
