@@ -252,10 +252,25 @@ export class ChatStack extends cdk.Stack {
         validation: acm.CertificateValidation.fromDns(zone),
       });
     }
-    // Rewrite only navigation paths. API errors and missing assets keep their real status.
+    // QR prefixes take precedence over geographic navigation paths.
     const rewrite = new cloudfront.Function(this, "SpaRoutes", {
       code: cloudfront.FunctionCode.fromInline(
-        String.raw`function handler(event) { var r=event.request; if (r.uri === '/' || /^\/(?:_|[0-9bcdefghjkmnpqrstuvwxyz]{1,8})\/?$/.test(r.uri)) r.uri='/index.html'; return r; }`,
+        String.raw`function handler(event) {
+  var r = event.request;
+  if (/^\/q[a-zA-Z0-9_]*/.test(r.uri)) {
+    console.log(JSON.stringify({event: 'qr_page_turn', path: r.uri, method: r.method}));
+    return {
+      statusCode: 302,
+      statusDescription: 'Found',
+      headers: {
+        location: {value: '/'},
+        'cache-control': {value: 'no-store'}
+      }
+    };
+  }
+  if (r.uri === '/' || /^\/(?:_|[0-9bcdefghjkmnpqrstuvwxyz]{1,8})\/?$/.test(r.uri)) r.uri = '/index.html';
+  return r;
+}`,
       ),
     });
     const distribution = new cloudfront.Distribution(this, "Web", {

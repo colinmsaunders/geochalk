@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { App } from "aws-cdk-lib";
 import { Template, Match } from "aws-cdk-lib/assertions";
 import { ChatStack } from "../infra/stack";
@@ -82,8 +82,48 @@ describe("AWS deployment guardrails", () => {
       "/assets/app.js",
       "/config.json",
       "/invalid",
+      "/Qr",
+      "/other/qr",
     ])
       expect(route({ request: { uri } }).uri).toBe(uri);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      for (const method of ["GET", "HEAD"])
+        for (const uri of [
+          "/qr",
+          "/q",
+          "/qSummer_2026",
+          "/qr/extra",
+          "/q-name",
+        ])
+          for (let visit = 0; visit < 2; visit++) {
+            log.mockClear();
+            expect(
+              route({
+                request: {
+                  uri,
+                  method,
+                  querystring: { private: { value: "ignored" } },
+                },
+              }),
+            ).toEqual({
+              statusCode: 302,
+              statusDescription: "Found",
+              headers: {
+                location: { value: "/" },
+                "cache-control": { value: "no-store" },
+              },
+            });
+            expect(log).toHaveBeenCalledTimes(1);
+            expect(JSON.parse(log.mock.calls[0][0])).toEqual({
+              event: "qr_page_turn",
+              path: uri,
+              method,
+            });
+          }
+    } finally {
+      log.mockRestore();
+    }
     template.hasResourceProperties("AWS::Cognito::UserPoolGroup", {
       GroupName: "moderators",
     });
