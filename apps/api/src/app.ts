@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   ancestors,
   chooseRoom,
+  generateDisplayName,
   nameSchema,
   postSchema,
   postingRoom,
@@ -95,7 +96,7 @@ export function createApp(
         return { status: 200, body: { ok: true } };
       if (req.method === "POST" && path === "/sessions") {
         const { name } = z
-          .object({ name: nameSchema.default("Wanderer") })
+          .object({ name: nameSchema.optional() })
           .parse(parse());
         const existing = guestToken
           ? await store.session(hash(guestToken))
@@ -105,7 +106,7 @@ export function createApp(
         const token = randomBytes(32).toString("base64url");
         const identity = {
           id: `guest:${randomUUID()}`,
-          name,
+          name: name ?? generateDisplayName(),
           moderator: false,
         };
         const expiresAt = Math.floor(Date.now() / 1000) + 30 * 86400;

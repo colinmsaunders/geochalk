@@ -58,6 +58,8 @@ Other limits: polling rather than WebSockets, API-only moderator tools, no passw
 
 `/join 9q8yy`, `/out`, `/in b`, `/here`, `/nick Your Name` (guests), `/help`.
 
+New guests and account signups start with a random display name such as `TinyCuriousRedGopher`: size, personality, color, and animal, each a single capitalized word. Guests can change it with `/nick`, and account signups can edit it before registering. Display names are not unique account identifiers.
+
 Enter sends; Shift+Enter creates a newline. View older messages pauses polling; return to live to resume. Local sessions and limits reset with the local API process.
 
 ## Geographic room descriptions

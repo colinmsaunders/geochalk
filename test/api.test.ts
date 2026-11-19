@@ -3,7 +3,7 @@ import { createApp } from "../apps/api/src/app";
 import { MemoryStore } from "../apps/api/src/memory";
 import { locationFor } from "./location-fixture";
 import { checkMotion } from "../apps/api/src/admission";
-async function setup() {
+async function setup(name: string | null = "Alice") {
   const store = new MemoryStore();
   const app = createApp(store);
   let cookie: string | undefined;
@@ -24,18 +24,25 @@ async function setup() {
       ip: "127.0.0.1",
     });
   };
-  const session = await request("POST", "/sessions", { name: "Alice" });
+  const session = await request("POST", "/sessions", {
+    name: name ?? undefined,
+  });
   cookie = session.cookies![0].split(";")[0];
   return { store, request, session };
 }
 it("creates secure persistent cookie identity without exposing a bearer secret", async () => {
-  const { request, session } = await setup();
+  const { request, session } = await setup(null);
   expect(session.cookies![0]).toMatch(
     /__Host-geochalk_guest=.*HttpOnly; SameSite=Lax.*Secure/,
   );
   expect(session.body).not.toHaveProperty("token");
-  expect((await request("GET", "/me")).status).toBe(200);
-  expect((await request("POST", "/sessions", {})).status).toBe(200);
+  const identity = (session.body as any).identity;
+  expect(identity.name).toMatch(/^(?:[A-Z][a-z]+){4}$/);
+  expect(identity.name.length).toBeLessThanOrEqual(24);
+  expect((await request("GET", "/me")).body).toEqual(identity);
+  const resumed = await request("POST", "/sessions", {});
+  expect(resumed.status).toBe(200);
+  expect(resumed.body).toEqual(session.body);
   expect((await request("PATCH", "/me", { name: "New name" }, "")).status).toBe(
     403,
   );

@@ -1,4 +1,5 @@
 import { z } from "zod";
+export { generateDisplayName, nameWords } from "./names";
 export const alphabet = "0123456789bcdefghjkmnpqrstuvwxyz";
 export const roomSchema = z
   .string()

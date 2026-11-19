@@ -53,7 +53,7 @@ export async function ensureGuest(): Promise<Identity> {
     const session = await api<{ identity: Identity }>("/sessions", {
       method: "POST",
       body: JSON.stringify({
-        name: localStorage.getItem("geochalk.name") ?? "Wanderer",
+        name: localStorage.getItem("geochalk.name") ?? undefined,
       }),
     });
     return session.identity;

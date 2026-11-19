@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { generateDisplayName } from "@geochalk/shared";
 import {
   CognitoIdentityProviderClient,
   SignUpCommand,
@@ -16,7 +17,7 @@ export function Auth({
   const [mode, setMode] = useState<"login" | "signup" | "confirm">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
+  const [name, setName] = useState(generateDisplayName);
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
