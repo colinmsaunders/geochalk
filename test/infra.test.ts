@@ -92,7 +92,8 @@ describe("AWS deployment guardrails", () => {
       "/assets/app.js",
       "/config.json",
       "/invalid",
-      "/Qr",
+      "/QA-",
+      "/Qa/path",
       "/other/qr",
       "/about/missing",
       "/9q8yu",
@@ -113,6 +114,9 @@ describe("AWS deployment guardrails", () => {
           "/qSummer_2026",
           "/qr/extra",
           "/q-name",
+          "/Q",
+          "/Qa",
+          "/Q123_",
         ])
           for (let visit = 0; visit < 2; visit++) {
             log.mockClear();

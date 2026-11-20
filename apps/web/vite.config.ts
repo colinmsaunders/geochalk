@@ -25,7 +25,11 @@ export default defineConfig({
             req.url = "/about.html" + (req.url ?? "").slice(path.length);
             return next();
           }
-          if (!/^\/q[a-zA-Z0-9_]*/.test(path)) return next();
+          if (
+            !/^\/q[a-zA-Z0-9_]*/.test(path) &&
+            !/^\/Q[A-Za-z0-9_]*$/.test(path)
+          )
+            return next();
           console.log(
             JSON.stringify({ event: "qr_page_turn", path, method: req.method }),
           );

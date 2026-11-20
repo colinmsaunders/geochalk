@@ -257,7 +257,7 @@ export class ChatStack extends cdk.Stack {
       code: cloudfront.FunctionCode.fromInline(
         String.raw`function handler(event) {
   var r = event.request;
-  if (/^\/q[a-zA-Z0-9_]*/.test(r.uri)) {
+  if (/^\/q[a-zA-Z0-9_]*/.test(r.uri) || /^\/Q[A-Za-z0-9_]*$/.test(r.uri)) {
     console.log(JSON.stringify({event: 'qr_page_turn', path: r.uri, method: r.method}));
     return {
       statusCode: 302,

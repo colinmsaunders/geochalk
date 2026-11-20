@@ -5,17 +5,17 @@ import {
   ROOM_CAPACITY,
   ancestors,
   roomSchema,
-  bounds,
   command,
   encode,
   type Identity,
   type Post,
   type Page,
 } from "@geochalk/shared";
-import { api, config, ensureGuest, sessionKey } from "./api";
+import { api, ensureGuest } from "./api";
 import { Auth } from "./Auth";
 import { freshPostingLocation } from "./location";
 import { roomFromPath, roomPath } from "./routes";
+import { distanceAway, timeAgo } from "./presentation";
 const places = [
   { name: "San Francisco", room: "9q8yy", label: "Bayside conversations" },
   { name: "New York", room: "dr5ru", label: "The city, in conversation" },
@@ -42,10 +42,13 @@ export default function App() {
   const prefix = room === "_" ? "" : room;
   const [user, setUser] = useState<Identity>();
   const [messages, setMessages] = useState<Post[]>([]);
+  const [reactions, setReactions] = useState<
+    Record<string, { flag: boolean; star: boolean }>
+  >({});
   const [cursor, setCursor] = useState<string>();
   const [draft, setDraft] = useState("");
   const [join, setJoin] = useState("");
-  const [postedRoom, setPostedRoom] = useState<string>();
+
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -58,6 +61,7 @@ export default function App() {
   const currentRoom = useRef(room);
   currentRoom.current = room;
   const end = useRef<HTMLDivElement>(null);
+  const postInput = useRef<HTMLTextAreaElement>(null);
   const generation = useRef(0);
   function go(next: string) {
     history.pushState({}, "", roomPath(next));
@@ -70,6 +74,7 @@ export default function App() {
   useEffect(() => {
     const handler = () => setRoom(initialRoom());
     window.addEventListener("popstate", handler);
+    if (room) postInput.current?.focus();
     ensureGuest()
       .then(setUser)
       .catch((e) => setError(e.message));
@@ -99,12 +104,8 @@ export default function App() {
       }
     }
     void refresh();
-    const timer = setInterval(() => {
-      if (!document.hidden && !historyMode.current) void refresh();
-    }, 5000);
     return () => {
       stopped = true;
-      clearInterval(timer);
     };
   }, [room]);
   async function locate() {
@@ -151,7 +152,6 @@ export default function App() {
             body: JSON.stringify({ name: cmd.name }),
           });
           setUser(updated);
-          localStorage.setItem("geochalk.name", cmd.name);
         }
         setDraft("");
         return;
@@ -166,7 +166,6 @@ export default function App() {
         }),
       });
       setDraft("");
-      setPostedRoom(result.originGeohash);
       setNotice(
         `Posted from #${result.originGeohash}. Your viewing room does not determine where you post.`,
       );
@@ -199,6 +198,7 @@ export default function App() {
       setSending(false);
     }
   }
+  const roomDescription = places.find((place) => place.room === room)?.name;
   async function remove(m: Post) {
     try {
       await api(`/messages/${m.postId}?originGeohash=${m.originGeohash}`, {
@@ -240,422 +240,192 @@ export default function App() {
       setError((e as Error).message);
     }
   }
-  const box = room ? bounds(room) : undefined;
   const sorted = [...messages].sort(
     (a, b) =>
-      a.createdAt.localeCompare(b.createdAt) ||
-      a.postId.localeCompare(b.postId),
+      b.createdAt.localeCompare(a.createdAt) ||
+      b.postId.localeCompare(a.postId),
   );
   return (
-    <div className="shell">
-      <aside className="sidebar">
-        <a
-          className="brand"
-          href="/"
-          onClick={(e) => {
-            e.preventDefault();
-            history.pushState({}, "", "/");
-            setRoom("");
-          }}
-        >
-          <span className="brand-icon">⌗</span>geo<span>chalk</span>
+    <div className="site">
+      <header className="site-header">
+        <a className="site-name" href="/">
+          geochalk
         </a>
-        <div className="sidebar-intro">
-          Good conversations
-          <br />
-          start somewhere.
-        </div>
-        <button className="locate-button" onClick={locate} disabled={locating}>
-          <span>⌖</span>
-          {locating ? "Finding your place…" : "Find my neighborhood"}
-          <span>↗</span>
-        </button>
-        <div className="nav-label">EXPLORE THE WORLD</div>
-        <nav>
-          {places.map((p) => (
-            <button
-              key={p.room}
-              className={`place ${room === p.room ? "selected" : ""}`}
-              onClick={() => go(p.room)}
-            >
-              <span className="place-dot">↗</span>
-              <span>
-                <strong>{p.name}</strong>
-                <small>{p.label}</small>
-              </span>
-              <code>{p.room}</code>
-            </button>
-          ))}
+        <nav aria-label="Site navigation">
+          <a href="/about">about</a>
         </nav>
-        <form
-          className="join"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (roomSchema.safeParse(join.toLowerCase()).success)
-              go(join.toLowerCase());
-            else
-              setError("Enter _ for the world or a geohash of 1–8 characters.");
-          }}
-        >
-          <label htmlFor="join-room">GO SOMEWHERE SPECIFIC</label>
-          <div>
-            <input
-              id="join-room"
-              placeholder="Enter a geohash"
-              value={join}
-              maxLength={8}
-              onChange={(e) => setJoin(e.target.value)}
-            />
-            <button aria-label="Join room">→</button>
-          </div>
-        </form>
-        <div className="sidebar-bottom">
-          <span className="avatar">
-            {user?.name.slice(0, 1).toUpperCase() ?? "?"}
-          </span>
-          <div>
-            <strong>{user?.name ?? "Connecting…"}</strong>
-            <small>
-              {user?.id.startsWith("guest:")
-                ? "Just visiting · Guest"
-                : "Member"}
-            </small>
-          </div>
-          {user?.id.startsWith("user:") ? (
-            <button
-              className="text-button"
-              onClick={() => {
-                localStorage.removeItem(sessionKey);
-                ensureGuest()
-                  .then(setUser)
-                  .catch((e) => setError(e.message));
-              }}
-            >
-              Sign out
-            </button>
-          ) : (
-            <button className="text-button" onClick={() => setAuth(true)}>
-              Sign in
-            </button>
-          )}
-        </div>
-      </aside>
-      <main>
-        <header className="topbar">
-          <span>
-            <i className="live-dot" /> A little more local. A little more human.
-          </span>
-          <button className="text-button" onClick={() => setHelp(true)}>
-            How it works <span>↗</span>
-          </button>
-        </header>
-        <section className="room-heading">
-          <div>
-            <div className="eyebrow">
-              {room ? "YOU ARE VIEWING" : "YOUR WORLD, IN CONVERSATION"}
-            </div>
-            <h1>
-              {room ? (
-                <>
-                  <span className="hash">#</span>
-                  {room}
-                </>
-              ) : (
-                "Every place has a story."
-              )}
-            </h1>
-            <p>
-              {room
-                ? `${levels[precision]}. Everyone is welcome.`
-                : "Find your people, a few blocks away or a world apart."}
-            </p>
-          </div>
-          {room && (
-            <div className="precision">
-              <span>ROOM PRECISION</span>
-              <div>
-                {Array.from({ length: 8 }, (_, i) => (
-                  <i key={i} className={i < precision ? "filled" : ""} />
-                ))}
-              </div>
-              <small>
-                {precision} of 8 · {levels[precision]}
-              </small>
-            </div>
-          )}
-        </section>
-        {(notice || config.local) && (
-          <div className="notice" role="status">
-            {notice ||
-              (config.local
-                ? "Local playground · Messages reset when the API restarts."
-                : "")}
-          </div>
-        )}
-        {postedRoom && (
-          <button className="pill" onClick={() => go(postedRoom)}>
-            View your post’s room #{postedRoom} ↗
-          </button>
-        )}
-        {error && (
-          <div className="error" role="alert">
-            {error}
-          </div>
-        )}
+      </header>
+      <main className="main-page">
         {room ? (
           <>
-            <section className="room-tools">
-              <div className="breadcrumbs">
-                {ancestors(room).map((ancestor, i) => (
-                  <button key={i} onClick={() => go(ancestor)}>
-                    {ancestor}
-                    {i < precision && <span> / </span>}
-                  </button>
-                ))}
-              </div>
-              <button
-                className="pill"
-                disabled={room === "_"}
-                onClick={() => go(room.length === 1 ? "_" : room.slice(0, -1))}
-              >
-                − Zoom out
-              </button>
-            </section>
-            <div className="content">
-              <section className="chat-panel" aria-label="Room conversation">
-                <div className="chat-top">
-                  <strong>
-                    The conversation <span>{messages.length}</span>
-                  </strong>
-                  <small>
-                    <i className="live-dot" />{" "}
-                    {historyPage ? "History paused" : "Updates every 5s"}
-                  </small>
-                </div>
-                <div className="message-scroll" aria-live="polite">
-                  {historyPage && (
-                    <button
-                      className="older"
-                      onClick={() => {
-                        historyMode.current = false;
-                        setHistoryPage(false);
-                        setNotice("Returning to live messages…");
-                      }}
-                    >
-                      Return to live ↓
-                    </button>
-                  )}
-                  {cursor && (
-                    <button className="older" onClick={older}>
-                      View older messages ↑
-                    </button>
-                  )}
-                  {loading ? (
-                    <div className="empty">
-                      <div className="empty-symbol">⌗</div>
-                      <h2>Finding the conversation…</h2>
-                    </div>
-                  ) : !messages.length ? (
-                    <div className="empty">
-                      <div className="empty-symbol">⌗</div>
-                      <span className="eyebrow">
-                        A NEW CONVERSATION STARTS HERE
-                      </span>
-                      <h2>Discover what’s happening here.</h2>
-                      <p>
-                        A local tip, a small discovery, a simple wave.
-                        <br />
-                        Posts come from the author’s reported location.
-                      </p>
-                      <div className="suggestions">
-                        {[
-                          "Hello from here 👋",
-                          "Any favorite spots around here?",
-                        ].map((text) => (
-                          <button key={text} onClick={() => setDraft(text)}>
-                            {text}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    sorted.map((m) => (
-                      <article
-                        className={`message ${m.authorId === user?.id ? "own" : ""}`}
-                        key={m.postId}
-                      >
-                        <span className="avatar">
-                          {m.displayName.slice(0, 1).toUpperCase()}
-                        </span>
-                        <div className="message-body">
-                          <div className="message-meta">
-                            <strong>{m.displayName}</strong>
-                            {m.authorId === user?.id && <small>you</small>}
-                            <time
-                              dateTime={m.createdAt}
-                              title={new Date(m.createdAt).toLocaleString()}
-                            >
-                              {new Date(m.createdAt).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </time>
-                            {m.originGeohash !== room && (
-                              <button onClick={() => go(m.originGeohash)}>
-                                #{m.originGeohash} ↗
-                              </button>
-                            )}
-                          </div>
-                          <p>{m.content}</p>
-                          {
-                            <div className="message-actions">
-                              <button onClick={() => report(m)}>Report</button>
-                              {(m.authorId === user?.id || user?.moderator) && (
-                                <button onClick={() => remove(m)}>
-                                  Delete
-                                </button>
-                              )}
-                            </div>
-                          }
-                        </div>
-                      </article>
-                    ))
-                  )}
-                  <div ref={end} />
-                </div>
-                <form className="composer" onSubmit={send}>
-                  <p className="posting-rule">
-                    Read anywhere. Posting shares your reported location
-                    publicly in a small geographic cell.
-                  </p>
-                  <label className="sr-only" htmlFor="message">
-                    Post from your current location
-                  </label>
-                  <textarea
-                    id="message"
-                    disabled={sending}
-                    value={draft}
-                    maxLength={2000}
-                    placeholder={`Post from your current location…`}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (
-                        e.key === "Enter" &&
-                        !e.shiftKey &&
-                        !e.nativeEvent.isComposing
-                      ) {
-                        e.preventDefault();
-                        e.currentTarget.form?.requestSubmit();
-                      }
+            <h1 className="room-title">
+              {ancestors(room).map((level, index) => (
+                <span className="room-level" key={index}>
+                  <a
+                    href={roomPath(level)}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      go(level);
                     }}
-                  />
-                  <div>
-                    <button
-                      className="text-button"
-                      type="button"
-                      onClick={() => setHelp(true)}
-                    >
-                      <span className="slash">/</span> commands
-                    </button>
-                    <small>
-                      {draft.length
-                        ? `${draft.length}/2000`
-                        : "Location required · Read anywhere. Post from here."}
-                    </small>
-                    <button
-                      className="send"
-                      disabled={sending || !user || !draft.trim()}
-                    >
-                      {sending ? "Sending…" : "Send"} <span>↑</span>
-                    </button>
-                  </div>
-                </form>
-              </section>
-              <aside className="details">
-                <div className="territory">
-                  <div className="grid-lines" />
-                  <div className="map-cell">
-                    <span>⌖</span>
-                    <code>{room}</code>
-                  </div>
-                  <span className="map-caption">YOUR PATCH OF THE PLANET</span>
-                </div>
-                <div className="detail-copy">
-                  <span className="eyebrow">A ROOM WITH A VIEW</span>
-                  <h3>
-                    Small places.
-                    <br />
-                    Bigger conversations.
-                  </h3>
-                  <p>
-                    You’re seeing messages from this room and every smaller room
-                    inside it.
-                  </p>
-                  {box && (
-                    <div className="coordinates">
-                      <span>
-                        LAT {box.south.toFixed(3)} → {box.north.toFixed(3)}
+                  >
+                    {level === "_" ? "@" : level}
+                  </a>
+                  {index < precision && <span aria-hidden="true"> </span>}
+                </span>
+              ))}
+              {room !== "_" && roomDescription && (
+                <> &mdash; {roomDescription}</>
+              )}
+            </h1>
+            {error && (
+              <p className="error" role="alert">
+                {error}
+              </p>
+            )}
+            {notice && (
+              <p className="notice" role="status">
+                {notice}
+              </p>
+            )}
+            <form className="post-form" onSubmit={send}>
+              <label className="visually-hidden" htmlFor="message">
+                Write a post
+              </label>
+              <textarea
+                id="message"
+                name="message"
+                ref={postInput}
+                rows={1}
+                disabled={sending}
+                value={draft}
+                maxLength={2000}
+                placeholder="Write here. Write now."
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (
+                    event.key === "Enter" &&
+                    !event.shiftKey &&
+                    !event.nativeEvent.isComposing
+                  ) {
+                    event.preventDefault();
+                    event.currentTarget.form?.requestSubmit();
+                  }
+                }}
+              />
+              <button type="submit" disabled={sending || !draft.trim()}>
+                {sending ? "sending" : "geochalk"}
+              </button>
+            </form>
+            <ul className="posts-list" aria-live="polite">
+              {loading && <li className="posts-loading">Loading…</li>}
+              {!loading &&
+                sorted.map((post) => {
+                  const state = reactions[post.postId] ?? {
+                    flag: false,
+                    star: false,
+                  };
+                  return (
+                    <li className="post" key={post.postId}>
+                      <p className="post-content">{post.content}</p>
+                      <span aria-hidden="true"> &nbsp;&mdash;&nbsp;</span>
+                      <a
+                        className="post-author"
+                        href={roomPath(post.originGeohash)}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          go(post.originGeohash);
+                        }}
+                      >
+                        {post.displayName}
+                      </a>
+                      <span className="post-context">
+                        , {distanceAway(post.originGeohash, room)} away,{" "}
+                        {timeAgo(post.createdAt)}
                       </span>
-                      <span>
-                        LON {box.west.toFixed(3)} → {box.east.toFixed(3)}
+                      <span className="post-actions">
+                        <button
+                          type="button"
+                          className={state.flag ? "is-active" : ""}
+                          aria-label="Flag post"
+                          aria-pressed={state.flag}
+                          onClick={() =>
+                            setReactions((current) => ({
+                              ...current,
+                              [post.postId]: { ...state, flag: !state.flag },
+                            }))
+                          }
+                        >
+                          {state.flag ? "⚑" : "⚐"}
+                        </button>
+                        <button
+                          type="button"
+                          className={state.star ? "is-active" : ""}
+                          aria-label="Star post"
+                          aria-pressed={state.star}
+                          onClick={() =>
+                            setReactions((current) => ({
+                              ...current,
+                              [post.postId]: { ...state, star: !state.star },
+                            }))
+                          }
+                        >
+                          {state.star ? "★" : "☆"}
+                        </button>
                       </span>
-                    </div>
-                  )}
-                  {precision < 8 ? (
-                    <>
-                      <h4>
-                        Get a little closer <span>↘</span>
-                      </h4>
-                      <p>Choose a smaller area within this room.</p>
-                      <div className="children">
-                        {[...alphabet].map((c) => (
-                          <button
-                            title={`Join ${prefix + c}`}
-                            key={c}
-                            onClick={() => go(prefix + c)}
-                          >
-                            {c}
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  ) : (
-                    <p>You’re at the closest view.</p>
-                  )}
-                  <div className="room-note">
-                    ↗ Read anywhere. Post from your reported location.
-                  </div>
-                </div>
-              </aside>
-            </div>
+                    </li>
+                  );
+                })}
+            </ul>
           </>
         ) : (
-          <section className="welcome">
-            <div className="welcome-orbit">⌖</div>
-            <h2>Where shall we begin?</h2>
-            <p>
-              Allow location to find a nearby conversation,
-              <br />
-              or choose a city below.
-            </p>
-            <button className="primary" onClick={locate} disabled={locating}>
-              {locating ? "Finding your place…" : "Find my neighborhood ↗"}
+          <section className="welcome-page">
+            <h1>Write here. Write now.</h1>
+            <p>Read a room anywhere. Share a post from your location.</p>
+            <button type="button" onClick={locate} disabled={locating}>
+              {locating ? "finding your room…" : "find my room"}
             </button>
-            <div className="welcome-places">
-              {places.map((p) => (
-                <button key={p.room} onClick={() => go(p.room)}>
-                  {p.name} ↗
-                </button>
+            {notice && <p role="status">{notice}</p>}
+            {error && <p role="alert">{error}</p>}
+            <nav className="example-rooms" aria-label="Example rooms">
+              {places.map((place) => (
+                <a
+                  key={place.room}
+                  href={roomPath(place.room)}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    go(place.room);
+                  }}
+                >
+                  {place.name}
+                </a>
               ))}
-            </div>
+            </nav>
+            <form
+              className="room-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const id = join.trim().toLowerCase();
+                if (roomSchema.safeParse(id).success) go(id);
+                else setError("Enter _ or a geohash of 1–8 characters.");
+              }}
+            >
+              <label htmlFor="join-room">Open a geohash room</label>
+              <input
+                id="join-room"
+                value={join}
+                onChange={(event) => setJoin(event.target.value)}
+                placeholder="geohash"
+              />
+              <button>go</button>
+            </form>
           </section>
         )}
-        <footer>
-          <span>geochalk</span>
-          <span>A conversation for every coordinate.</span>
-          <span>Stay curious. Be kind.</span>
-        </footer>
       </main>
+      <footer className="site-footer">
+        <span>© 2027 Scrimsha LLC</span>
+        <span>·</span>
+        <a href="/about">about</a>
+      </footer>
       {auth && (
         <Auth
           onClose={() => setAuth(false)}
@@ -663,61 +433,24 @@ export default function App() {
             setAuth(false);
             api<Identity>("/me")
               .then(setUser)
-              .catch((e) => setError(e.message));
+              .catch((error) => setError(error.message));
           }}
         />
       )}
       {help && (
-        <div className="overlay">
-          <section
-            className="modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="help-title"
-          >
-            <button
-              className="close"
-              aria-label="Close help"
-              onClick={() => setHelp(false)}
-            >
-              ×
-            </button>
-            <span className="eyebrow">A QUICK FIELD GUIDE</span>
-            <h2 id="help-title">The world is your chat room.</h2>
-            <p>
-              Every room is a geohash: a short code for a rectangle on Earth.
-              Longer codes mean smaller places. A message in a small room also
-              appears in all its parent rooms.
-            </p>
-            <dl>
-              {[
-                ["/join 9q8yy", "Visit another room"],
-                ["/out", "Zoom out one level"],
-                ["/in b", "Zoom into child b"],
-                ["/here", "Find an active room near you"],
-                ["/nick Your Name", "Change your guest name"],
-                ["/help", "Open this guide"],
-              ].map(([cmd, desc]) => (
-                <div key={cmd}>
-                  <dt>
-                    <code>{cmd}</code>
-                  </dt>
-                  <dd>{desc}</dd>
-                </div>
-              ))}
-            </dl>
-            <p className="muted">
-              Location is optional for browsing and required for posting.
-              Posting sends coordinates, accuracy and timestamp for server
-              validation; posts store a precision-8 geohash. Coarse abuse
-              observations expire after 30 minutes. Browser locations can be
-              spoofed. Original posts remain in an append-only archive,
-              including after deletion from rooms. Each room holds up to 256
-              posts; random collisions replace posts, with no time expiry. Guest
-              sessions last 30 days; names are not unique.
-            </p>
-          </section>
-        </div>
+        <section
+          className="help-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-label="How it works"
+        >
+          <button type="button" onClick={() => setHelp(false)}>
+            close
+          </button>
+          <h2>How it works</h2>
+          <p>Read anywhere. Posting shares your reported location.</p>
+          <p>Use /join, /out, /in, /here, /nick, and /help in the post box.</p>
+        </section>
       )}
     </div>
   );
