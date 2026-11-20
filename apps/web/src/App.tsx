@@ -247,18 +247,22 @@ export default function App() {
   );
   return (
     <div className="site">
-      <header className="site-header">
-        <a className="site-name" href="/">
-          geochalk
-        </a>
-        <nav aria-label="Site navigation">
-          <a href="/about">about</a>
-        </nav>
+      <header className="site-header navbar border-bottom border-secondary-subtle py-3">
+        <div className="container">
+          <a className="navbar-brand text-info mb-0" href="/">
+            geochalk
+          </a>
+          <nav aria-label="Site navigation" className="ms-auto">
+            <a className="link-secondary" href="/about">
+              about
+            </a>
+          </nav>
+        </div>
       </header>
-      <main className="main-page">
+      <main className="main-page container flex-grow-1 py-4">
         {room ? (
           <>
-            <h1 className="room-title">
+            <h1 className="room-title h3 mb-4">
               {ancestors(room).map((level, index) => (
                 <span className="room-level" key={index}>
                   <a
@@ -278,12 +282,12 @@ export default function App() {
               )}
             </h1>
             {error && (
-              <p className="error" role="alert">
+              <p className="alert alert-danger py-2" role="alert">
                 {error}
               </p>
             )}
             {notice && (
-              <p className="notice" role="status">
+              <p className="alert alert-info py-2" role="status">
                 {notice}
               </p>
             )}
@@ -294,6 +298,7 @@ export default function App() {
               <textarea
                 id="message"
                 name="message"
+                className="form-control"
                 ref={postInput}
                 rows={1}
                 disabled={sending}
@@ -312,12 +317,23 @@ export default function App() {
                   }
                 }}
               />
-              <button type="submit" disabled={sending || !draft.trim()}>
+              <button
+                className="btn btn-primary"
+                type="submit"
+                disabled={sending || !draft.trim()}
+              >
                 {sending ? "sending" : "geochalk"}
               </button>
             </form>
-            <ul className="posts-list" aria-live="polite">
-              {loading && <li className="posts-loading">Loading…</li>}
+            <ul
+              className="posts-list list-group list-group-flush"
+              aria-live="polite"
+            >
+              {loading && (
+                <li className="list-group-item bg-transparent text-secondary px-0">
+                  Loading…
+                </li>
+              )}
               {!loading &&
                 sorted.map((post) => {
                   const state = reactions[post.postId] ?? {
@@ -325,11 +341,14 @@ export default function App() {
                     star: false,
                   };
                   return (
-                    <li className="post" key={post.postId}>
-                      <p className="post-content">{post.content}</p>
+                    <li
+                      className="post list-group-item bg-transparent text-body px-0"
+                      key={post.postId}
+                    >
+                      <p className="post-content mb-0">{post.content}</p>
                       <span aria-hidden="true"> &nbsp;&mdash;&nbsp;</span>
                       <a
-                        className="post-author"
+                        className="post-author link-info"
                         href={roomPath(post.originGeohash)}
                         onClick={(event) => {
                           event.preventDefault();
@@ -345,7 +364,7 @@ export default function App() {
                       <span className="post-actions">
                         <button
                           type="button"
-                          className={state.flag ? "is-active" : ""}
+                          className={`btn btn-sm btn-outline-secondary ${state.flag ? "is-active" : ""}`}
                           aria-label="Flag post"
                           aria-pressed={state.flag}
                           onClick={() =>
@@ -359,7 +378,7 @@ export default function App() {
                         </button>
                         <button
                           type="button"
-                          className={state.star ? "is-active" : ""}
+                          className={`btn btn-sm btn-outline-secondary ${state.star ? "is-active" : ""}`}
                           aria-label="Star post"
                           aria-pressed={state.star}
                           onClick={() =>
@@ -380,15 +399,31 @@ export default function App() {
         ) : (
           <section className="welcome-page">
             <h1>Write here. Write now.</h1>
-            <p>Read a room anywhere. Share a post from your location.</p>
-            <button type="button" onClick={locate} disabled={locating}>
+            <p className="lead">
+              Read a room anywhere. Share a post from your location.
+            </p>
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={locate}
+              disabled={locating}
+            >
               {locating ? "finding your room…" : "find my room"}
             </button>
-            {notice && <p role="status">{notice}</p>}
-            {error && <p role="alert">{error}</p>}
+            {notice && (
+              <p className="alert alert-info" role="status">
+                {notice}
+              </p>
+            )}
+            {error && (
+              <p className="alert alert-danger" role="alert">
+                {error}
+              </p>
+            )}
             <nav className="example-rooms" aria-label="Example rooms">
               {places.map((place) => (
                 <a
+                  className="link-info"
                   key={place.room}
                   href={roomPath(place.room)}
                   onClick={(event) => {
@@ -412,19 +447,22 @@ export default function App() {
               <label htmlFor="join-room">Open a geohash room</label>
               <input
                 id="join-room"
+                className="form-control"
                 value={join}
                 onChange={(event) => setJoin(event.target.value)}
                 placeholder="geohash"
               />
-              <button>go</button>
+              <button className="btn btn-outline-info">go</button>
             </form>
           </section>
         )}
       </main>
-      <footer className="site-footer">
+      <footer className="site-footer container border-top border-secondary-subtle py-3 d-flex gap-2 text-secondary small">
         <span>© 2027 Scrimsha LLC</span>
         <span>·</span>
-        <a href="/about">about</a>
+        <a className="link-secondary" href="/about">
+          about
+        </a>
       </footer>
       {auth && (
         <Auth

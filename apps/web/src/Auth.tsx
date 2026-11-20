@@ -73,9 +73,9 @@ export function Auth({
     }
   }
   return (
-    <div className="overlay">
+    <div className="auth-overlay">
       <section
-        className="modal"
+        className="auth-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="auth-title"

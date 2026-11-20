@@ -1,23 +1,37 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
     <title>geochalk | about</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Google+Sans+Code:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
-    <header class="site-header">
-      <a class="site-name" href="/">geochalk</a>
-      <nav aria-label="Site navigation"><a href="/about">about</a></nav>
+    <header class="site-header border-bottom border-secondary-subtle py-3">
+      <nav
+        class="container d-flex align-items-center justify-content-between"
+        aria-label="Site navigation"
+      >
+        <a class="navbar-brand text-info mb-0" href="/">geochalk</a>
+        <a class="link-secondary" href="/about">about</a>
+      </nav>
     </header>
-    <main class="static-page">
-      <p>Write here. Write now.</p>
-      <p>rev: __GEOCHALK_REVISION__</p>
+    <main class="static-page container flex-grow-1 py-5">
+      <p class="lead">Write here. Write now.</p>
+      <p class="text-secondary small">rev: __GEOCHALK_REVISION__</p>
     </main>
-    <footer class="site-footer">
-      <span>© 2027 Scrimsha LLC</span>
-      <span>·</span>
-      <a href="/about">about</a>
+    <footer
+      class="site-footer container border-top border-secondary-subtle py-3 d-flex gap-2 text-secondary small"
+    >
+      <span>© 2027 Scrimsha LLC</span><span>·</span
+      ><a class="link-secondary" href="/about">about</a>
     </footer>
+    <script type="module" src="/src/about.ts"></script>
   </body>
 </html>
