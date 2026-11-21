@@ -1,25 +1,6 @@
-// Single words, ordered size / personality / color / animal. The longest
-// combination is 24 characters, matching the display-name limit.
+// Single words, ordered adjective / color / animal.
 export const nameWords = {
-  sizes: [
-    "Tiny",
-    "Small",
-    "Large",
-    "Giant",
-    "Huge",
-    "Jumbo",
-    "Mini",
-    "Micro",
-    "Short",
-    "Tall",
-    "Broad",
-    "Stout",
-    "Plump",
-    "Slim",
-    "Vast",
-    "Wee",
-  ],
-  personalities: [
+  adjectives: [
     "Angry",
     "Bold",
     "Brave",
@@ -157,12 +138,7 @@ export const nameWords = {
 
 /** A random display name, not a unique account identifier. */
 export function generateDisplayName(): string {
-  return [
-    nameWords.sizes,
-    nameWords.personalities,
-    nameWords.colors,
-    nameWords.animals,
-  ]
+  return [nameWords.adjectives, nameWords.colors, nameWords.animals]
     .map((words) => words[Math.floor(Math.random() * words.length)])
     .join("");
 }

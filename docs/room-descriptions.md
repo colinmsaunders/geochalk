@@ -1,16 +1,16 @@
 # Geographic room description database — measured build
 
-Built locally on 2026-11-16. The complete [Python implementation and regeneration instructions](../packages/room-descriptions/README.md) are in `packages/room-descriptions`. The chat API and AWS deployment were not modified.
+Rebuilt locally on 2026-11-21 from the cached GeoNames, OSMNames and Natural Earth source snapshots downloaded on 2026-11-16. The complete [Python implementation and regeneration instructions](../packages/room-descriptions/README.md) are in `packages/room-descriptions`. The Node API now serves a read-only geoname lookup for room headings. CDK includes the local SQLite artifact in the Lambda bundle when it is present during synthesis.
 
 ## Artifact
 
-`artifacts/room-descriptions/geochalk-gazetteer-v1-20261116.sqlite` is the read-only runtime database. The versioned ZIP beside it bundles the database, checksum/build manifest, validation results, source manifest and attribution. Generated data is ignored by Git.
+`artifacts/room-descriptions/geochalk-gazetteer-v1-20261121.sqlite` is the read-only runtime database. Generated data is ignored by Git.
 
 - Named places: **1,000,000**, selected from **1,316,867** canonical records after deduplication.
 - Anchors: **1,082,400**, exactly 32 + 1,024 + 32,768 + 1,048,576. No initial level-5 entries.
 - SQLite size: **60,313,600 bytes**, or **60.31 MB / 57.52 MiB**.
-- Generation time from normalized inputs: **125.11 seconds**, including staging, deduplication, selection, indexing, ANALYZE, VACUUM and integrity/coverage checks. Downloads and normalization are additional.
-- SHA-256: `0d60fc229665223809c775dbedc16fa879b41128cbb77d635d28125276f97d59`.
+- Generation time from normalized inputs: **113.94 seconds**, including staging, deduplication, selection, indexing, ANALYZE, VACUUM and integrity/coverage checks. Downloads and normalization are additional.
+- SHA-256: `10ad7e9f093b84d90ec478c328e2ea6ff0b214619944b30cbbb39fe5640e665e`.
 
 ## Lookup benchmark
 
@@ -18,9 +18,9 @@ Built locally on 2026-11-16. The complete [Python implementation and regeneratio
 
 | Operation                                      |     Median |        p95 |
 | ---------------------------------------------- | ---------: | ---------: |
-| LRU disabled, reused connection                |  22.459 μs |  30.166 μs |
-| Warm LRU, reused connection                    |   3.042 μs |   4.083 μs |
-| Open connection + lookup + close (100 samples) | 155.250 μs | 234.542 μs |
+| LRU disabled, reused connection                |  19.417 μs |  26.541 μs |
+| Warm LRU, reused connection                    |   2.042 μs |   2.333 μs |
+| Open connection + lookup + close (100 samples) | 165.980 μs | 366.292 μs |
 
 The OS page cache was not flushed. Fresh-connection measurements represent application-cold lookups, **not physical cold-disk reads**. Runtime does not import build dependencies or make network calls.
 
@@ -52,4 +52,5 @@ These are generated from the requested room geometry; they are not copied from t
 - Both SQL joins use `INTEGER PRIMARY KEY` lookup. The published database contains no build spatial indexes or source provenance payloads.
 - OSM source: **OSMNames v2.0.4, an older snapshot**, filtered to the six requested settlement/neighborhood types. This should be refreshed with current OSM PBF/JSONL before relying on current neighborhood coverage. GeoNames cities1000 and Natural Earth v5.1.2 are also included; exact source digests are in the manifest.
 - Geographic deduplication and bounded nearest-candidate ranking are heuristics. Generalized regional boundaries improve coarse anchors, but runtime point-only records never assert `in`. Population/type are build-only; runtime Place returns `population=None`, `kind="unknown"` per the compact schema.
-- No new AWS deployment or public get-description HTTP endpoint was created. The requested Python API and deployable data artifact are ready; Lambda packaging options are documented.
+- The public `GET /api/rooms/:prefix/geoname` route returns the read-only gazetteer anchor and falls back to shorter prefixes when needed. Room prefixes longer than four characters currently use their precision-4 parent anchor because the initial database precomputes levels 1–4 only. The Python package separately supports optional exact precision-5 anchors.
+- Production Lambda packaging includes the SQLite file when it exists locally during CDK synthesis. Generated databases remain ignored by Git, so a deploy from another machine must provide the database artifact before synthesis.

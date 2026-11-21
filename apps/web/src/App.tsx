@@ -3,7 +3,6 @@ import {
   alphabet,
   postSlot,
   ROOM_CAPACITY,
-  ancestors,
   roomSchema,
   command,
   encode,
@@ -38,13 +37,13 @@ function initialRoom() {
 }
 export default function App() {
   const [room, setRoom] = useState(initialRoom);
-  const precision = room === "_" ? 0 : room.length;
   const prefix = room === "_" ? "" : room;
   const [user, setUser] = useState<Identity>();
+  const [roomName, setRoomName] = useState("");
   const [messages, setMessages] = useState<Post[]>([]);
-  const [reactions, setReactions] = useState<
-    Record<string, { flag: boolean; star: boolean }>
-  >({});
+  const [reactions, setReactions] = useState<Record<string, { flag: boolean }>>(
+    {},
+  );
   const [cursor, setCursor] = useState<string>();
   const [draft, setDraft] = useState("");
   const [join, setJoin] = useState("");
@@ -62,6 +61,7 @@ export default function App() {
   currentRoom.current = room;
   const end = useRef<HTMLDivElement>(null);
   const postInput = useRef<HTMLTextAreaElement>(null);
+  const joinInput = useRef<HTMLInputElement>(null);
   const generation = useRef(0);
   function go(next: string) {
     history.pushState({}, "", roomPath(next));
@@ -75,6 +75,7 @@ export default function App() {
     const handler = () => setRoom(initialRoom());
     window.addEventListener("popstate", handler);
     if (room) postInput.current?.focus();
+    else joinInput.current?.focus();
     ensureGuest()
       .then(setUser)
       .catch((e) => setError(e.message));
@@ -104,6 +105,19 @@ export default function App() {
       }
     }
     void refresh();
+    return () => {
+      stopped = true;
+    };
+  }, [room]);
+  useEffect(() => {
+    setRoomName("");
+    if (!room || room === "_") return;
+    let stopped = false;
+    api<{ name: string }>(`/rooms/${room}/geoname`)
+      .then((place) => {
+        if (!stopped) setRoomName(place.name);
+      })
+      .catch(() => undefined);
     return () => {
       stopped = true;
     };
@@ -198,7 +212,6 @@ export default function App() {
       setSending(false);
     }
   }
-  const roomDescription = places.find((place) => place.room === room)?.name;
   async function remove(m: Post) {
     try {
       await api(`/messages/${m.postId}?originGeohash=${m.originGeohash}`, {
@@ -250,36 +263,39 @@ export default function App() {
       <header className="site-header navbar border-bottom border-secondary-subtle py-3">
         <div className="container">
           <a className="navbar-brand text-info mb-0" href="/">
-            geochalk
+            geochalk.com
           </a>
-          <nav aria-label="Site navigation" className="ms-auto">
-            <a className="link-secondary" href="/about">
-              about
-            </a>
-          </nav>
         </div>
       </header>
       <main className="main-page container flex-grow-1 py-4">
         {room ? (
           <>
             <h1 className="room-title h3 mb-4">
-              {ancestors(room).map((level, index) => (
-                <span className="room-level" key={index}>
+              <a
+                href={roomPath("_")}
+                onClick={(event) => {
+                  event.preventDefault();
+                  go("_");
+                }}
+              >
+                @
+              </a>
+              {Array.from(prefix, (character, index) => {
+                const level = prefix.slice(0, index + 1);
+                return (
                   <a
+                    key={level}
                     href={roomPath(level)}
                     onClick={(event) => {
                       event.preventDefault();
                       go(level);
                     }}
                   >
-                    {level === "_" ? "@" : level}
+                    {character}
                   </a>
-                  {index < precision && <span aria-hidden="true"> </span>}
-                </span>
-              ))}
-              {room !== "_" && roomDescription && (
-                <> &mdash; {roomDescription}</>
-              )}
+                );
+              })}
+              {room !== "_" && roomName && <> &mdash; {roomName}</>}
             </h1>
             {error && (
               <p className="alert alert-danger py-2" role="alert">
@@ -304,7 +320,7 @@ export default function App() {
                 disabled={sending}
                 value={draft}
                 maxLength={2000}
-                placeholder="Write here. Write now."
+                placeholder="Write here. Right now."
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={(event) => {
                   if (
@@ -338,30 +354,37 @@ export default function App() {
                 sorted.map((post) => {
                   const state = reactions[post.postId] ?? {
                     flag: false,
-                    star: false,
                   };
+                  const age = timeAgo(post.createdAt);
+                  const isHere =
+                    room === "_" || post.originGeohash.startsWith(room);
                   return (
                     <li
                       className="post list-group-item bg-transparent text-body px-0"
                       key={post.postId}
                     >
-                      <p className="post-content mb-0">{post.content}</p>
-                      <span aria-hidden="true"> &nbsp;&mdash;&nbsp;</span>
                       <a
-                        className="post-author link-info"
+                        className="post-location"
                         href={roomPath(post.originGeohash)}
+                        aria-label={`Open room ${post.originGeohash}`}
                         onClick={(event) => {
                           event.preventDefault();
                           go(post.originGeohash);
                         }}
                       >
-                        {post.displayName}
-                      </a>
+                        ⊙
+                      </a>{" "}
+                      <p className="post-content mb-0">{post.content}</p>
+                      <span aria-hidden="true"> &nbsp;&mdash;&nbsp;</span>
+                      <span className="post-author">{post.displayName}</span>
                       <span className="post-context">
-                        , {distanceAway(post.originGeohash, room)} away,{" "}
-                        {timeAgo(post.createdAt)}
+                        {isHere
+                          ? age === "just now"
+                            ? ", right here, right now"
+                            : `, right here, ${age}`
+                          : `, ${distanceAway(post.originGeohash, room)} away, ${age}`}
                       </span>
-                      <span className="post-actions">
+                      <sup className="post-actions">
                         <button
                           type="button"
                           className={`btn btn-sm btn-outline-secondary ${state.flag ? "is-active" : ""}`}
@@ -376,21 +399,7 @@ export default function App() {
                         >
                           {state.flag ? "⚑" : "⚐"}
                         </button>
-                        <button
-                          type="button"
-                          className={`btn btn-sm btn-outline-secondary ${state.star ? "is-active" : ""}`}
-                          aria-label="Star post"
-                          aria-pressed={state.star}
-                          onClick={() =>
-                            setReactions((current) => ({
-                              ...current,
-                              [post.postId]: { ...state, star: !state.star },
-                            }))
-                          }
-                        >
-                          {state.star ? "★" : "☆"}
-                        </button>
-                      </span>
+                      </sup>
                     </li>
                   );
                 })}
@@ -398,7 +407,7 @@ export default function App() {
           </>
         ) : (
           <section className="welcome-page">
-            <h1>Write here. Write now.</h1>
+            <h1>Write here. Right now.</h1>
             <p className="lead">
               Read a room anywhere. Share a post from your location.
             </p>
@@ -448,6 +457,7 @@ export default function App() {
               <input
                 id="join-room"
                 className="form-control"
+                ref={joinInput}
                 value={join}
                 onChange={(event) => setJoin(event.target.value)}
                 placeholder="geohash"

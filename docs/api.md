@@ -9,6 +9,7 @@ All routes start with `/api`. JSON errors are `{error:string}`. Public room read
 | GET    | `/me`                                      | Cookie or Cognito             | `Identity`                                                                          |
 | PATCH  | `/me`                                      | Guest cookie, `{name}`        | Updated identity                                                                    |
 | GET    | `/rooms/suggest?geohash=c23nb62w`          | Prefix 0–8 (`_` for 0)        | `{room,counts,windowMinutes:15,targetMessages:3}`                                   |
+| GET    | `/rooms/:prefix/geoname`                   | Geohash prefix 1–8            | `{name,latitude,longitude,importance}` from the local read-only gazetteer           |
 | GET    | `/rooms/:prefix/messages?cursor=…`         | Optional cursor               | `{posts:Post[],cursor?:string}`                                                     |
 | POST   | `/messages`                                | `{content,location}`          | 201 `Post`                                                                          |
 | DELETE | `/messages/:postId?originGeohash=c23nb62w` | Owner or moderator            | `{deleted:true}`                                                                    |

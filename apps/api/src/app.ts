@@ -16,6 +16,7 @@ import {
 } from "@geochalk/shared";
 import { ApiError, type Store } from "./store";
 import { admitPost, type LocationRiskCheck } from "./admission";
+import type { Geoname } from "./geoname";
 export interface Request {
   method: string;
   path: string;
@@ -35,6 +36,7 @@ export function createApp(
     readOnly?: boolean;
     insecureLocalCookie?: boolean;
     riskCheck?: LocationRiskCheck;
+    roomNameLookup?: (room: string) => Geoname | undefined;
   } = {},
 ) {
   return async (
@@ -94,6 +96,15 @@ export function createApp(
       };
       if (req.method === "GET" && path === "/health")
         return { status: 200, body: { ok: true } };
+      const geonameMatch = path.match(/^\/rooms\/([^/]+)\/geoname$/);
+      if (req.method === "GET" && geonameMatch) {
+        if (!options.roomNameLookup)
+          throw new ApiError(503, "Room names are not configured.");
+        const room = roomSchema.parse(geonameMatch[1]);
+        const place = options.roomNameLookup(room);
+        if (!place) throw new ApiError(404, "No named place found for room.");
+        return { status: 200, body: place };
+      }
       if (req.method === "POST" && path === "/sessions") {
         const { name } = z
           .object({ name: nameSchema.optional() })

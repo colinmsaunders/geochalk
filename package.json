@@ -14,6 +14,7 @@
     "test": "npm run build && vitest run",
     "synth": "cdk synth",
     "deploy": "npm run build && cdk deploy GeochalkWest --outputs-file geochalk-west-outputs.json && cdk deploy Geochalk --outputs-file geochalk-edge-outputs.json",
+    "seed:production": "node scripts/seed-local-from-production.mjs",
     "format": "prettier --write apps packages infra test docs README.md package.json tsconfig.json cdk.json vitest.config.ts"
   },
   "dependencies": {

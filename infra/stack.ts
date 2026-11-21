@@ -17,6 +17,8 @@ import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import { existsSync } from "node:fs";
+const gazetteerSourcePath =
+  "artifacts/room-descriptions/geochalk-gazetteer-v1-20261121.sqlite";
 export interface BackendTarget {
   region: string;
   apiId: string;
@@ -135,9 +137,27 @@ export class ChatStack extends cdk.Stack {
       memorySize: 512,
       timeout: cdk.Duration.seconds(15),
       reservedConcurrentExecutions: 50,
-      bundling: { minify: true, sourceMap: true, externalModules: [] },
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        externalModules: [],
+        ...(existsSync(gazetteerSourcePath)
+          ? {
+              commandHooks: {
+                beforeBundling: () => [],
+                beforeInstall: () => [],
+                afterBundling: (inputDir: string, outputDir: string) => [
+                  `cp "${inputDir}/${gazetteerSourcePath}" "${outputDir}/geochalk-gazetteer.sqlite"`,
+                ],
+              },
+            }
+          : {}),
+      },
       environment: {
         READ_ONLY: props?.readOnly ? "true" : "false",
+        GEOCHALK_GAZETTEER_PATH: existsSync(gazetteerSourcePath)
+          ? "/var/task/geochalk-gazetteer.sqlite"
+          : "",
         POSTS_TABLE_NAME: table.tableName,
         CONTROL_TABLE_NAME: controls.tableName,
         ARCHIVE_TABLE_NAME: archive.tableName,

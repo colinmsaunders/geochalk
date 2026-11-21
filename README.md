@@ -10,10 +10,13 @@ Requires Node.js 22.12+ and npm.
 
 ```sh
 npm ci
+npm run seed:production # optional: copy public posts from the prod archive into gitignored local data
 npm run dev
 ```
 
-Open **http://127.0.0.1:5173**. The local API uses an in-memory store; no AWS account, credentials, or Docker are needed. Data resets when the API restarts. Registered accounts are enabled only on AWS. Opening `/` asks for location and suggests a room; if location is denied, enter a geohash or choose a city.
+Open **http://127.0.0.1:5173**. The local API uses an in-memory store seeded from `artifacts/local-seed/production-posts.json` when present; data resets when the API restarts. The seed contains recent public post fields only, omits author IDs and account/session data, and is ignored by Git. `npm run seed:production` needs AWS credentials for the production account and can be bounded with `GEOCHALK_LOCAL_SEED_LIMIT`.
+
+The generated read-only room gazetteer lives at `artifacts/room-descriptions/geochalk-gazetteer-v1-20261121.sqlite`. Local API lookups use it automatically; set `GEOCHALK_GAZETTEER_PATH` to use another database. Room-name lookup falls back through parent geohash prefixes when an exact anchor is not precomputed. Opening `/` asks for location and suggests a room; if location is denied, enter a geohash or choose a city.
 
 ```sh
 npm test
@@ -58,7 +61,7 @@ Other limits: polling rather than WebSockets, API-only moderator tools, no passw
 
 `/join 9q8yy`, `/out`, `/in b`, `/here`, `/nick Your Name` (guests), `/help`.
 
-New guests and account signups start with a random display name such as `TinyCuriousRedGopher`: size, personality, color, and animal, each a single capitalized word. Guests can change it with `/nick`, and account signups can edit it before registering. Display names are not unique account identifiers.
+New guests and account signups start with a random display name such as `CuriousRedGopher`: an adjective, color, and animal, each a single capitalized word. Guests can change it with `/nick`, and account signups can edit it before registering. Display names are not unique account identifiers.
 
 Enter sends; Shift+Enter creates a newline. View older messages pauses polling; return to live to resume. Local sessions and limits reset with the local API process.
 

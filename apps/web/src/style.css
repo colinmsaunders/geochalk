@@ -56,16 +56,8 @@ textarea {
   overflow-wrap: anywhere;
 }
 
-.room-level:not(:last-of-type) {
-  margin-right: 0.35em;
-}
-
-.room-level a {
+.room-title a {
   text-decoration: none;
-  color: var(--bs-secondary-color);
-}
-
-.room-level:last-of-type a {
   color: var(--bs-primary);
 }
 
@@ -108,10 +100,17 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.post-location {
+  color: var(--bs-secondary-color);
+  text-decoration: none;
+}
+
+.post-location:hover {
+  color: var(--bs-primary);
+}
+
 .post-author {
   font-weight: 600;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 0.2em;
 }
 
 .post-context {
@@ -120,19 +119,16 @@ textarea {
 }
 
 .post-actions {
-  display: inline-flex;
-  gap: 0.4rem;
-  margin-left: 0.6rem;
-  vertical-align: baseline;
+  margin-left: 0.2em;
 }
 
 .post-actions button {
-  min-width: 1.8em;
+  min-width: 1em;
   border: 0;
-  padding: 0 0.15rem;
+  padding: 0;
   background: transparent;
   color: var(--bs-secondary-color);
-  font-size: 1.1em;
+  font-size: 0.8em;
   line-height: 1;
 }
 

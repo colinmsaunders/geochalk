@@ -16,5 +16,6 @@ legacy-cdk.out/
 
 # Generated gazetteer sources, build provenance, versioned databases and virtualenvs
 artifacts/room-descriptions/
+artifacts/local-seed/
 packages/room-descriptions/.venv/
 *.egg-info/

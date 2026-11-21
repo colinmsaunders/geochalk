@@ -1,8 +1,26 @@
 import { createServer } from "node:http";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import type { Post } from "@geochalk/shared";
 import { createApp } from "./app";
+import { configuredGeonameLookup } from "./geoname";
 import { MemoryStore } from "./memory";
-const app = createApp(new MemoryStore(), undefined, {
+const gazetteerPath =
+  process.env.GEOCHALK_GAZETTEER_PATH ??
+  resolve("artifacts/room-descriptions/geochalk-gazetteer-v1-20261121.sqlite");
+const seedPath =
+  process.env.GEOCHALK_LOCAL_SEED_PATH ??
+  resolve("artifacts/local-seed/production-posts.json");
+const seedPosts = existsSync(seedPath)
+  ? (
+      JSON.parse(readFileSync(seedPath, "utf8")) as Omit<Post, "authorId">[]
+    ).map((post) => ({ ...post, authorId: `seed:${post.postId}` }))
+  : [];
+const store = new MemoryStore(seedPosts);
+console.log(`Loaded ${seedPosts.length} local post seeds.`);
+const app = createApp(store, undefined, {
   insecureLocalCookie: true,
+  roomNameLookup: configuredGeonameLookup(gazetteerPath),
 });
 createServer(async (req, res) => {
   res.setHeader("content-type", "application/json");

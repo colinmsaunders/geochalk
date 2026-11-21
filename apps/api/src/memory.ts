@@ -30,6 +30,18 @@ export class MemoryStore implements Store {
   >();
   rates = new Map<string, number>();
   reportItems = new Map<string, Report>();
+  constructor(seedPosts: Post[] = []) {
+    for (const post of seedPosts) {
+      originSchema.parse(post.originGeohash);
+      postIdSchema.parse(post.postId);
+      this.archive.set(post.postId, { ...post });
+      for (const room of ancestors(post.originGeohash)) {
+        const slots = this.rooms.get(room) ?? new Map<string, Post>();
+        slots.set(postSlot(post.postId), { ...post });
+        this.rooms.set(room, slots);
+      }
+    }
+  }
   async rate(scope: string, limit: number, now: number) {
     const key = `${scope}#${Math.floor(now / 60000)}`;
     const count = (this.rates.get(key) ?? 0) + 1;

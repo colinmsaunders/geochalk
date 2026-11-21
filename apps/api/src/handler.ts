@@ -2,6 +2,10 @@ import type { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { CognitoJwtVerifier } from "aws-jwt-verify";
 import { createApp } from "./app";
 import { DynamoStore } from "./dynamo";
+import { configuredGeonameLookup } from "./geoname";
+const roomNameLookup = configuredGeonameLookup(
+  process.env.GEOCHALK_GAZETTEER_PATH,
+);
 const verifier = CognitoJwtVerifier.create({
   userPoolId: process.env.USER_POOL_ID!,
   tokenUse: "id",
@@ -21,7 +25,10 @@ const app = createApp(
       moderator: (claims["cognito:groups"] ?? []).includes("moderators"),
     };
   },
-  { readOnly: process.env.READ_ONLY === "true" },
+  {
+    readOnly: process.env.READ_ONLY === "true",
+    roomNameLookup,
+  },
 );
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   const result = await app({

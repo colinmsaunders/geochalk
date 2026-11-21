@@ -1,11 +1,11 @@
 # Geographic room descriptions
 
-A Python offline builder and a standard-library-only, read-only runtime. The existing TypeScript/Lambda application is not changed by installing this package.
+A Python offline builder and read-only Python runtime. The generated SQLite file is also read by GeoChalk's Node API through Node's built-in SQLite support; the Lambda bundle includes the database when the local artifact exists during synthesis.
 
 ```python
 from geochalk_geo import configure, get_geoname, get_room_description
 
-configure("/data/geochalk-gazetteer-v1-20261116.sqlite", cache_size=100_000)
+configure("/data/geochalk-gazetteer-v1-20261121.sqlite", cache_size=100_000)
 place = get_geoname("9q8yy")
 print(place.name, place.latitude, place.longitude, place.importance)
 print(get_room_description("9q8yy"))
@@ -33,7 +33,7 @@ The tests build a complete 1,082,400-anchor synthetic database, check byte-for-b
 mkdir -p artifacts/room-descriptions
 geochalk-geo-build packages/room-descriptions/fixtures/synthetic.jsonl \
   --output artifacts/room-descriptions/synthetic-v1.sqlite \
-  --build-date 2026-11-16T00:00:00Z
+  --build-date 2026-11-21T00:00:00Z
 geochalk-geo-validate artifacts/room-descriptions/synthetic-v1.sqlite \
   --output artifacts/room-descriptions/synthetic-v1.validation.json
 ```
@@ -71,11 +71,11 @@ geochalk-geo-build \
   artifacts/room-descriptions/regions.jsonl \
   artifacts/room-descriptions/oceans.jsonl \
   --source-manifest artifacts/room-descriptions/sources/sources.json \
-  --build-date 2026-11-16T00:00:00Z \
-  --output artifacts/room-descriptions/geochalk-gazetteer-v1-20261116.sqlite
+  --build-date 2026-11-21T00:00:00Z \
+  --output artifacts/room-descriptions/geochalk-gazetteer-v1-20261121.sqlite
 
-geochalk-geo-validate artifacts/room-descriptions/geochalk-gazetteer-v1-20261116.sqlite \
-  --samples 10000 --output artifacts/room-descriptions/geochalk-gazetteer-v1-20261116.validation.json
+geochalk-geo-validate artifacts/room-descriptions/geochalk-gazetteer-v1-20261121.sqlite \
+  --samples 10000 --output artifacts/room-descriptions/geochalk-gazetteer-v1-20261121.validation.json
 ```
 
 Normalization streams the OSMNames gzip without expanding the multi-GB TSV onto disk. Streets are rejected before parsing their sometimes very large address fields. Empty or symbol-only names are counted and rejected. All other malformed records fail the import. Normalized JSONL publishes atomically; a `.partial` file is never accepted as a finished output. Download manifests record URLs, versions, sizes, SHA-256 and retrieval date. Natural Earth sometimes repeats IDs across features; normalization retains both the original `ne_id` and a dataset/ID/component identifier.
