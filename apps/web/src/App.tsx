@@ -14,7 +14,20 @@ import { api, ensureGuest } from "./api";
 import { Auth } from "./Auth";
 import { freshPostingLocation } from "./location";
 import { roomFromPath, roomPath } from "./routes";
-import { distanceAway, timeAgo } from "./presentation";
+import {
+  distanceAway,
+  moveRoom,
+  roomArea,
+  timeAgo,
+  zoomInRoom,
+  zoomOutRoom,
+} from "./presentation";
+const directions = [
+  { label: "↑", east: 0, north: 1, name: "North" },
+  { label: "→", east: 1, north: 0, name: "East" },
+  { label: "↓", east: 0, north: -1, name: "South" },
+  { label: "←", east: -1, north: 0, name: "West" },
+];
 const places = [
   { name: "San Francisco", room: "9q8yy", label: "Bayside conversations" },
   { name: "New York", room: "dr5ru", label: "The city, in conversation" },
@@ -139,9 +152,6 @@ export default function App() {
         `/rooms/suggest?geohash=${hash}`,
       );
       go(result.room);
-      setNotice(
-        "Found your area. Read anywhere; posts use your current reported location.",
-      );
     } catch {
       setNotice(
         "Location is unavailable. Choose a place below or enter a geohash to get started.",
@@ -260,17 +270,10 @@ export default function App() {
   );
   return (
     <div className="site">
-      <header className="site-header navbar border-bottom border-secondary-subtle py-3">
-        <div className="container">
-          <a className="navbar-brand text-info mb-0" href="/">
-            geochalk.com
-          </a>
-        </div>
-      </header>
       <main className="main-page container flex-grow-1 py-4">
         {room ? (
           <>
-            <h1 className="room-title h3 mb-4">
+            <h1 className="room-title h3 mb-5">
               <a
                 href={roomPath("_")}
                 onClick={(event) => {
@@ -297,6 +300,56 @@ export default function App() {
               })}
               {room !== "_" && roomName && <> &mdash; {roomName}</>}
             </h1>
+            <nav
+              className="room-controls"
+              aria-label="Room size and navigation"
+            >
+              <span>{roomArea(room)}</span>
+              <span aria-hidden="true">·</span>
+              {room !== "_" && (
+                <a
+                  href={roomPath(zoomOutRoom(room))}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    go(zoomOutRoom(room));
+                  }}
+                >
+                  zoom out
+                </a>
+              )}
+              {room.length < 8 && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <a
+                    href={roomPath(zoomInRoom(room))}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      go(zoomInRoom(room));
+                    }}
+                  >
+                    zoom in
+                  </a>
+                </>
+              )}
+              <span aria-hidden="true">·</span>
+              {directions.map(({ label, east, north, name }) => {
+                const nextRoom = moveRoom(room, east, north);
+                return (
+                  <a
+                    key={name}
+                    href={roomPath(nextRoom)}
+                    aria-label={`Move ${name.toLowerCase()}`}
+                    title={`Move ${name.toLowerCase()}`}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      go(nextRoom);
+                    }}
+                  >
+                    {label}
+                  </a>
+                );
+              })}
+            </nav>
             {error && (
               <p className="alert alert-danger py-2" role="alert">
                 {error}
@@ -356,15 +409,14 @@ export default function App() {
                     flag: false,
                   };
                   const age = timeAgo(post.createdAt);
-                  const isHere =
-                    room === "_" || post.originGeohash.startsWith(room);
+                  const distance = distanceAway(post.originGeohash, room);
                   return (
                     <li
                       className="post list-group-item bg-transparent text-body px-0"
                       key={post.postId}
                     >
                       <a
-                        className="post-location"
+                        className="post-location post-context"
                         href={roomPath(post.originGeohash)}
                         aria-label={`Open room ${post.originGeohash}`}
                         onClick={(event) => {
@@ -375,16 +427,18 @@ export default function App() {
                         ⊙
                       </a>{" "}
                       <p className="post-content mb-0">{post.content}</p>
-                      <span aria-hidden="true"> &nbsp;&mdash;&nbsp;</span>
-                      <span className="post-author">{post.displayName}</span>
-                      <span className="post-context">
-                        {isHere
-                          ? age === "just now"
-                            ? ", right here, right now"
-                            : `, right here, ${age}`
-                          : `, ${distanceAway(post.originGeohash, room)} away, ${age}`}
+                      <span className="post-context" aria-hidden="true">
+                        {" "}&mdash;{" "}
                       </span>
-                      <sup className="post-actions">
+                      <span className="post-context">{post.displayName}</span>
+                      <span className="post-context">
+                        {distance === "right here" && age === "just now"
+                          ? ", right here, right now"
+                          : `, ${distance}, ${age}`}
+                      </span>
+                      <sup
+                        className={`post-actions ${state.flag ? "is-active" : ""}`}
+                      >
                         <button
                           type="button"
                           className={`btn btn-sm btn-outline-secondary ${state.flag ? "is-active" : ""}`}
@@ -466,14 +520,14 @@ export default function App() {
             </form>
           </section>
         )}
+        <footer className="site-footer border-top border-secondary-subtle py-3 d-flex gap-2 text-secondary small">
+          <span>© 2027 Scrimsha LLC</span>
+          <span>·</span>
+          <a className="link-secondary" href="/about">
+            about
+          </a>
+        </footer>
       </main>
-      <footer className="site-footer container border-top border-secondary-subtle py-3 d-flex gap-2 text-secondary small">
-        <span>© 2027 Scrimsha LLC</span>
-        <span>·</span>
-        <a className="link-secondary" href="/about">
-          about
-        </a>
-      </footer>
       {auth && (
         <Auth
           onClose={() => setAuth(false)}

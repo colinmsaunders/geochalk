@@ -1,4 +1,4 @@
-import { bounds } from "@geochalk/shared";
+import { bounds, encode } from "@geochalk/shared";
 
 export function timeAgo(value: string, now = Date.now()): string {
   const seconds = Math.max(0, Math.floor((now - Date.parse(value)) / 1000));
@@ -18,7 +18,7 @@ export function timeAgo(value: string, now = Date.now()): string {
 }
 
 export function distanceAway(from: string, to: string): string {
-  if (from === to || to === "_") return "here";
+  if (from === to || to === "_") return "right here";
   const center = (hash: string) => {
     const b = bounds(hash);
     return [(b.south + b.north) / 2, (b.west + b.east) / 2];
@@ -34,7 +34,53 @@ export function distanceAway(from: string, to: string): string {
       Math.cos(lat2 * radians) *
       Math.sin(dLon / 2) ** 2;
   const miles = 3958.7613 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  if (miles < 0.5) return "nearby";
+  if (miles < 0.5) return "right here";
   const rounded = Math.round(miles);
-  return `${rounded} ${rounded === 1 ? "mile" : "miles"}`;
+  return `${rounded} ${rounded === 1 ? "mile" : "miles"} away`;
+}
+
+export function roomArea(room: string): string {
+  const cell = bounds(room);
+  const radians = Math.PI / 180;
+  const areaM2 =
+    6_371_008.8 ** 2 *
+    Math.abs(Math.sin(cell.north * radians) - Math.sin(cell.south * radians)) *
+    ((cell.east - cell.west) * radians);
+  const squareMiles = areaM2 / 2_589_988.110336;
+  const area = new Intl.NumberFormat("en-US", {
+    maximumSignificantDigits: 2,
+  }).format(squareMiles);
+  return `${area} square miles`;
+}
+
+export function zoomInRoom(room: string): string {
+  const precision = room === "_" ? 0 : room.length;
+  if (precision >= 8) return room;
+  const cell = bounds(room);
+  return encode(
+    (cell.south + cell.north) / 2,
+    (cell.west + cell.east) / 2,
+    precision + 1,
+  );
+}
+
+export function zoomOutRoom(room: string): string {
+  if (room === "_" || room.length === 1) return "_";
+  return room.slice(0, -1);
+}
+
+export function moveRoom(room: string, east: number, north: number): string {
+  if (room === "_") return encode(north * 45, east * 90, 1);
+  const cell = bounds(room);
+  const latitude = Math.max(
+    -90,
+    Math.min(
+      90,
+      (cell.south + cell.north) / 2 + north * (cell.north - cell.south),
+    ),
+  );
+  const longitude =
+    (cell.west + cell.east) / 2 + east * (cell.east - cell.west);
+  const wrappedLongitude = ((((longitude + 180) % 360) + 360) % 360) - 180;
+  return encode(latitude, wrappedLongitude, room.length);
 }
