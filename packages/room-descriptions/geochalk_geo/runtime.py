@@ -8,6 +8,7 @@ from threading import RLock
 from typing import Literal
 
 from .formatting import format_description
+from .fine import lookup as fine_lookup
 from .geometry import decode_cell, geohash_key
 from .models import Place
 
@@ -38,12 +39,18 @@ class Gazetteer:
             ).fetchone()
             if version != (SCHEMA_VERSION,):
                 raise ValueError("unsupported gazetteer schema version")
+            self._has_fine_index = (
+                self._db.execute(
+                    "SELECT 1 FROM sqlite_schema WHERE name='fine_index'"
+                ).fetchone()
+                is not None
+            )
         except BaseException:
             self._db.close()
             raise
         self._cached = lru_cache(maxsize=cache_size)(self._lookup)
 
-    def _lookup(self, prefix: str) -> Place:
+    def _lookup(self, prefix: str) -> tuple[Place, str | None]:
         row = self._db.execute(
             """
             SELECT p.id,p.name,p.latitude,p.longitude,p.importance
@@ -53,18 +60,25 @@ class Gazetteer:
             (geohash_key(prefix),),
         ).fetchone()
         if row:
-            return Place(
-                id=row[0],
-                name=row[1],
-                latitude=row[2],
-                longitude=row[3],
-                importance=row[4],
+            return (
+                Place(
+                    id=row[0],
+                    name=row[1],
+                    latitude=row[2],
+                    longitude=row[3],
+                    importance=row[4],
+                ),
+                None,
             )
+        if len(prefix) == 7 and self._has_fine_index:
+            match = fine_lookup(self._db, *decode_cell(prefix).center)
+            if match:
+                return match
         if len(prefix) > 1:
             return self._cached(prefix[:-1])
         raise LookupError(f"gazetteer has no anchor for {prefix!r}")
 
-    def get_geoname(self, geohash_prefix: str) -> Place:
+    def _resolve(self, geohash_prefix: str) -> tuple[Place, str | None]:
         decode_cell(geohash_prefix)
         with self._lock:
             if self._closed:
@@ -73,13 +87,20 @@ class Gazetteer:
                 raise RuntimeError("open a new Gazetteer after forking")
             return self._cached(geohash_prefix)
 
+    def get_geoname(self, geohash_prefix: str) -> Place:
+        return self._resolve(geohash_prefix)[0]
+
     def get_room_description(
         self, geohash_prefix: str, unit: Literal["miles", "meters"] = "miles"
     ) -> str:
         if unit not in ("miles", "meters"):
             raise ValueError("unit must be 'miles' or 'meters'")
+        place, relation = self._resolve(geohash_prefix)
+        # An inherited seven-character label does not prove the subcell is inside.
+        if len(geohash_prefix) == 8 and relation == "in":
+            relation = "near"
         return format_description(
-            decode_cell(geohash_prefix), self.get_geoname(geohash_prefix), unit
+            decode_cell(geohash_prefix), place, unit, spatial_relation=relation
         )
 
     def cache_info(self):
@@ -113,22 +134,22 @@ def configure(path: str | Path, cache_size: int = 100_000) -> None:
         _default = replacement
 
 
+def _database() -> Gazetteer:
+    if _default is None:
+        path = os.environ.get("GEOCHALK_GAZETTEER")
+        if not path:
+            raise RuntimeError("set GEOCHALK_GAZETTEER or call configure(path)")
+        configure(path)
+    return _default
+
+
 def get_geoname(geohash_prefix: str) -> Place:
-    decode_cell(geohash_prefix)
     with _default_lock:
-        if _default is None:
-            path = os.environ.get("GEOCHALK_GAZETTEER")
-            if not path:
-                raise RuntimeError("set GEOCHALK_GAZETTEER or call configure(path)")
-            configure(path)
-        return _default.get_geoname(geohash_prefix)
+        return _database().get_geoname(geohash_prefix)
 
 
 def get_room_description(
     geohash_prefix: str, unit: Literal["miles", "meters"] = "miles"
 ) -> str:
-    if unit not in ("miles", "meters"):
-        raise ValueError("unit must be 'miles' or 'meters'")
-    return format_description(
-        decode_cell(geohash_prefix), get_geoname(geohash_prefix), unit
-    )
+    with _default_lock:
+        return _database().get_room_description(geohash_prefix, unit)

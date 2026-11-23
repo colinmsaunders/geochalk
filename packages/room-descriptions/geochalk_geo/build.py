@@ -17,6 +17,7 @@ import shapely
 from scipy.spatial import cKDTree
 from shapely.geometry import shape
 from shapely.strtree import STRtree
+from .fine import write_index
 
 from .geometry import (
     MEAN_EARTH_RADIUS_KM,
@@ -149,7 +150,8 @@ def validate_record(r):
 def stage_inputs(paths, stage, config):
     """Disk-backed raw provenance and spatial dedup; fixed ordering, not input ordering."""
     db = sqlite3.connect(stage)
-    db.executescript("""
+    db.executescript(
+        """
       CREATE TABLE raw(source TEXT,source_id TEXT,priority INTEGER,body TEXT,
                        PRIMARY KEY(source,source_id)) WITHOUT ROWID;
       CREATE TABLE canonical(id INTEGER PRIMARY KEY,name TEXT,norm TEXT,lat REAL,lon REAL,
@@ -158,7 +160,8 @@ def stage_inputs(paths, stage, config):
       CREATE INDEX name_kind ON canonical(norm,kind);
       CREATE TABLE provenance(source TEXT,source_id TEXT,place_id INTEGER,
                               PRIMARY KEY(source,source_id)) WITHOUT ROWID;
-    """)
+    """
+    )
     sources = []
     for path in sorted(map(Path, paths)):
         sources.append({"file": path.name, "sha256": sha256(path)})
@@ -220,8 +223,19 @@ def stage_inputs(paths, stage, config):
             )
             place_id = chosen[0]
             db.execute(
-                "UPDATE canonical SET importance=max(importance,?), population=max(coalesce(population,0),?) WHERE id=?",
-                (score, r.get("population") or 0, place_id),
+                """UPDATE canonical SET importance=max(importance,?),
+                population=max(coalesce(population,0),?), geometry=coalesce(geometry,?)
+                WHERE id=?""",
+                (
+                    score,
+                    r.get("population") or 0,
+                    (
+                        json.dumps(r["geometry"], separators=(",", ":"), sort_keys=True)
+                        if r.get("geometry")
+                        else None
+                    ),
+                    place_id,
+                ),
             )
         else:
             geometry = (
@@ -291,13 +305,17 @@ class Selector:
                 if (
                     r[5] in COARSE
                     if level <= 2
-                    else r[5] in {"city", "metropolis"}
-                    if level == 3
-                    else r[5] in {"city", "town", "metropolis"}
-                    or (r[5] == "village" and (r[7] or 0) >= 1000)
-                    if level == 4
-                    else r[5]
-                    in {"town", "village", "suburb", "quarter", "neighbourhood"}
+                    else (
+                        r[5] in {"city", "metropolis"}
+                        if level == 3
+                        else (
+                            r[5] in {"city", "town", "metropolis"}
+                            or (r[5] == "village" and (r[7] or 0) >= 1000)
+                            if level == 4
+                            else r[5]
+                            in {"town", "village", "suburb", "quarter", "neighbourhood"}
+                        )
+                    )
                 )
             ]
             if not indices:
@@ -453,6 +471,7 @@ def build(
         "INSERT INTO places VALUES(?,?,?,?,?)",
         ((r[0], r[1], r[3], r[4], r[6]) for r in rows),
     )
+    write_index(db, rows)
     for level in range(1, 5):
         for start in range(0, 32**level, 8192):
             keys, lat, lon, scale = cells(level, start, min(start + 8192, 32**level))
@@ -482,6 +501,7 @@ def build(
         "place_count": str(len(rows)),
         "canonical_input_count": str(canonical_count),
         "precomputed_levels": "1,2,3,4",
+        "fine_lookup": "7",
         "area_model": "sphere R=6371008.8 meters",
         "build_environment": json.dumps(
             {

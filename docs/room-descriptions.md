@@ -1,4 +1,10 @@
-# Geographic room description database — measured build
+# Geographic room description database
+
+## Precision-7 build
+
+The current artifact is `artifacts/room-descriptions/geochalk-gazetteer-v1-20261123.sqlite`. It occupies **76,038,144 bytes (72.52 MiB)**, retains **1,082,400 precomputed anchors**, and took **140 seconds** to build from normalized inputs. Its local index contains 178,954 point entries and 79 polygon components from 41 [DataSF Analysis Neighborhoods](https://data.sf.gov/d/p5b7-5n3h). Seven-character rooms resolve on demand from the local index and eight-character rooms inherit that name. The [regeneration instructions](../packages/room-descriptions/README.md) cover additional neighborhood and city boundaries.
+
+## November 21 baseline
 
 Rebuilt locally on 2026-11-21 from the cached GeoNames, OSMNames and Natural Earth source snapshots downloaded on 2026-11-16. The complete [Python implementation and regeneration instructions](../packages/room-descriptions/README.md) are in `packages/room-descriptions`. The Node API now serves a read-only geoname lookup for room headings. CDK includes the local SQLite artifact in the Lambda bundle when it is present during synthesis.
 

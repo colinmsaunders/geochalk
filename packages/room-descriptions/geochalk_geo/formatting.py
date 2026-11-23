@@ -35,7 +35,11 @@ def relationship(cell: Cell, place: Place) -> str:
 
 
 def format_description(
-    cell: Cell, place: Place, unit: Literal["miles", "meters"] = "miles"
+    cell: Cell,
+    place: Place,
+    unit: Literal["miles", "meters"] = "miles",
+    *,
+    spatial_relation: str | None = None,
 ) -> str:
     if unit == "miles":
         area, label = cell.area("miles"), "square miles"
@@ -45,4 +49,5 @@ def format_description(
             area, label = area / 1_000_000, "square kilometers"
     else:
         raise ValueError("unit must be 'miles' or 'meters'")
-    return f"{rounded_area(area)} {label} {relationship(cell, place)} {place.name}"
+    relation = spatial_relation or relationship(cell, place)
+    return f"{rounded_area(area)} {label} {relation} {place.name}"

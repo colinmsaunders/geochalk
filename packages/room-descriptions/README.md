@@ -5,14 +5,16 @@ A Python offline builder and read-only Python runtime. The generated SQLite file
 ```python
 from geochalk_geo import configure, get_geoname, get_room_description
 
-configure("/data/geochalk-gazetteer-v1-20261121.sqlite", cache_size=100_000)
+configure("/data/geochalk-gazetteer-v1-20261123.sqlite", cache_size=100_000)
 place = get_geoname("9q8yy")
 print(place.name, place.latitude, place.longitude, place.importance)
 print(get_room_description("9q8yy"))
 print(get_room_description("9q8yy", "meters"))
 ```
 
-Alternatively set `GEOCHALK_GAZETTEER` to the database path, or use an explicit `Gazetteer(path)` context manager. Only lowercase geohashes of length 1–5 are accepted; `_`, uppercase letters, and precision 6+ are rejected. Units are exactly `miles` or `meters` (not `kilometers`).
+Alternatively set `GEOCHALK_GAZETTEER` to the database path, or use an explicit `Gazetteer(path)` context manager. The runtime accepts lowercase geohashes of length 1–8. Units are exactly `miles` or `meters`.
+
+At precision 7, lookup uses the smallest containing neighborhood polygon, the nearest neighborhood point within 1 km, a containing city boundary, or the existing parent anchor, in that order. For point matches inside a known city, candidates outside that city are excluded. Precision 8 inherits the precision-7 name. An explicit stored anchor wins at its own precision. Older artifacts still resolve via parent anchors.
 
 ## Install and test
 
@@ -62,6 +64,12 @@ geochalk-geo-normalize natural-earth artifacts/room-descriptions/sources/regions
   --region-kind region --output artifacts/room-descriptions/regions.jsonl
 geochalk-geo-normalize natural-earth artifacts/room-descriptions/sources/oceans.geojson \
   --region-kind ocean --output artifacts/room-descriptions/oceans.jsonl
+curl -fL https://data.sf.gov/resource/j2bu-swwd.geojson \
+  -o artifacts/room-descriptions/sources/datasf-neighborhoods.geojson
+geochalk-geo-normalize place-boundaries \
+  artifacts/room-descriptions/sources/datasf-neighborhoods.geojson \
+  --boundary-source datasf-j2bu-swwd --name-field nhood \
+  --output artifacts/room-descriptions/datasf-neighborhoods.jsonl
 
 geochalk-geo-build \
   artifacts/room-descriptions/geonames.jsonl \
@@ -70,17 +78,20 @@ geochalk-geo-build \
   artifacts/room-descriptions/states.jsonl \
   artifacts/room-descriptions/regions.jsonl \
   artifacts/room-descriptions/oceans.jsonl \
+  artifacts/room-descriptions/datasf-neighborhoods.jsonl \
   --source-manifest artifacts/room-descriptions/sources/sources.json \
-  --build-date 2026-11-21T00:00:00Z \
-  --output artifacts/room-descriptions/geochalk-gazetteer-v1-20261121.sqlite
+  --build-date 2026-11-23T00:00:00Z \
+  --output artifacts/room-descriptions/geochalk-gazetteer-v1-20261123.sqlite
 
-geochalk-geo-validate artifacts/room-descriptions/geochalk-gazetteer-v1-20261121.sqlite \
-  --samples 10000 --output artifacts/room-descriptions/geochalk-gazetteer-v1-20261121.validation.json
+geochalk-geo-validate artifacts/room-descriptions/geochalk-gazetteer-v1-20261123.sqlite \
+  --samples 10000 --output artifacts/room-descriptions/geochalk-gazetteer-v1-20261123.validation.json
 ```
 
 Normalization streams the OSMNames gzip without expanding the multi-GB TSV onto disk. Streets are rejected before parsing their sometimes very large address fields. Empty or symbol-only names are counted and rejected. All other malformed records fail the import. Normalized JSONL publishes atomically; a `.partial` file is never accepted as a finished output. Download manifests record URLs, versions, sizes, SHA-256 and retrieval date. Natural Earth sometimes repeats IDs across features; normalization retains both the original `ne_id` and a dataset/ID/component identifier.
 
 ### Current OSM alternatives
+
+The fine lookup uses [DataSF Analysis Neighborhoods](https://data.sf.gov/d/p5b7-5n3h) for San Francisco and place points for cities without polygon inputs. To add city boundaries, normalize a WGS84 GeoJSON FeatureCollection with `place-boundaries --boundary-kind city --boundary-source <dataset-id>`. Use `--name-field` to select the feature property containing the name. Split polygons at the antimeridian before import.
 
 For a newer snapshot, process local OSM PBF files or exported JSONL instead of OSMNames. Do not run a million-place query against a public interactive Overpass instance.
 
@@ -97,7 +108,7 @@ Each JSONL record contains `source`, `source_id`, `name`, `latitude`, `longitude
 
 Stable normalization uses Unicode NFKD, case folding and alphanumeric names. Deduplication merges equal normalized names within 2 km for settlements and 0.5 km for neighborhoods; incompatible feature families and distant namesakes remain separate. Distances wrap at the dateline. GeoNames is processed before OSM, then source IDs establish a deterministic order; merged importance/population take the maximum. This is deliberately conservative: alternate spellings beyond accent/case/punctuation differences can remain separate. It does not equate all places named Springfield.
 
-`*.build.sqlite` retains raw source records, canonical population/type, spatial build data, many-to-one provenance links and the IDs selected for publication. It is not a runtime dependency. The runtime `Place` dataclass exposes the requested fields, but `population=None` and `kind="unknown"` because the specified compact runtime schema omits those build-only attributes. Name, coordinates, importance and ID come from SQLite.
+`*.build.sqlite` retains raw source records, canonical population/type, spatial build data, many-to-one provenance links and the IDs selected for publication. The published database provides names, coordinates, importance and IDs. Python also returns the kind for fine matches.
 
 The default cap is 1,000,000 places. Keep all regional supplements, then choose settlements in rounds across precision-3 geographic buckets, ordered by importance and stable ID within each bucket. If fewer genuine unique places are supplied, publish that actual count and report it—never duplicate or fabricate places to reach a quota.
 
@@ -117,11 +128,11 @@ Use `--config path.json` to override `BuildConfig` fields: `target_places`, `can
 
 Cell area uses exactly the specified sphere with radius **6,371,008.8 m**, integrating sine latitude between geohash parallels. It does not use planar width-times-height or a constant area per precision. Miles means square miles. Meters means square meters below 1,000,000 m², otherwise square kilometers. Formatting rounds half-up to roughly two significant digits and never displays zero for a positive cell area.
 
-Bearing is from the selected place to the **requested** room center, not its fallback parent's center. `around` means the point is in the cell or within 10% of its linear scale; `near` covers nearby points or unstable polar/antipodal bearings; other cases use eight compass directions. The runtime never says `in`, because its compact point-only tables cannot prove boundary containment. Large region labels still have representative-point relationship limitations.
+For precomputed anchors, bearing is from the selected place to the **requested** room center. `around` means the point is in the cell or within 10% of its linear scale. `near` covers nearby points or unstable polar/antipodal bearings, and other cases use eight compass directions. Precision-7 descriptions say `in` for a polygon containing the room center and `near` for a nearby point.
 
-## SQLite and precision-5 behavior
+## SQLite and precision
 
-Runtime content is the specified `places` and `room_anchors` tables, plus a small `metadata` table and SQLite's `ANALYZE` statistics. No spatial index, source records, geometry or formatted text ships in the runtime database. Both runtime IDs use `INTEGER PRIMARY KEY`.
+The published database contains `places`, `room_anchors`, `metadata`, and SQLite's `ANALYZE` statistics. The `fine_features` table stores local point references and polygon components. Its `fine_index` R-tree limits lookups to nearby points and overlapping polygon bounds. The full offline staging index and source records stay in the build database.
 
 Geohash keys use a sentinel bit: start at integer 1 and shift left five bits for each geohash character, adding the character value. Thus `0` is 32 and `00` is 1,024; leading zeros and differing lengths never collide. Each precision occupies a separate contiguous key interval.
 
@@ -135,7 +146,7 @@ Reproducibility requires identical source bytes, normalized inputs, configuratio
 
 One `Gazetteer` shares a read-only SQLite connection serialized by an RLock; the LRU uses the same lock. It is safe for threads, with one process-level instance. For higher parallelism, instantiate one per worker process. Do not reuse a connection inherited through fork; the runtime detects it. Configure during worker startup, and close at shutdown. Database access uses `mode=ro` and `PRAGMA query_only=ON`; missing paths fail instead of creating an empty database. Runtime has no network implementation or build dependency.
 
-For AWS Lambda, the straightforward deployment is a Python container image containing the finished SQLite file and the runtime package. Create the `Gazetteer` once at module initialization, then reuse it across invocations. The repository's current chat Lambda is Node.js; this package does not silently replace it or add a subprocess/network call to room reads. Integration needs a separate decision about a Python service or a corresponding Node SQLite reader.
+The chat Lambda uses its own Node SQLite reader and reuses the connection across invocations. CDK bundles `artifacts/room-descriptions/geochalk-gazetteer-v1-20261123.sqlite` when present at synthesis time.
 
 AWS currently allows a **250 MB uncompressed ZIP including layers**, versus **10 GB uncompressed for a container image**. A 60–120 MB database may fit in a ZIP with a small runtime, but the whole deployment must be measured; do not assume every ZIP/layer composition fits. An EFS mount with read-only IAM/POSIX permissions is another option, with VPC/network setup and network-file read latency to measure. Never mutate a mounted live artifact: publish a new version and deploy a new path. Packaging the DB inside an image avoids runtime source/API/network downloads. Sources: [Lambda quotas](https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html), [filesystem access](https://docs.aws.amazon.com/lambda/latest/dg/configuration-filesystem.html).
 

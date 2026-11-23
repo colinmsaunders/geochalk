@@ -49,11 +49,11 @@ def geonames(path):
                 kind = (
                     "neighbourhood"
                     if row[7] == "PPLX"
-                    else "city"
-                    if (pop or 0) >= 100000 or row[7] == "PPLC"
-                    else "town"
-                    if (pop or 0) >= 10000
-                    else "village"
+                    else (
+                        "city"
+                        if (pop or 0) >= 100000 or row[7] == "PPLC"
+                        else "town" if (pop or 0) >= 10000 else "village"
+                    )
                 )
                 yield {
                     "source": "geonames",
@@ -183,6 +183,31 @@ def natural_earth(path, kind):
         }
 
 
+def place_boundaries(path, source, kind, name_field):
+    """Normalize Polygon/MultiPolygon features from a curated GeoJSON source."""
+    from shapely import make_valid
+    from shapely.geometry import mapping, shape
+
+    for index, feature in enumerate(json.loads(Path(path).read_text())["features"]):
+        name = feature["properties"].get(name_field)
+        if not name or not feature.get("geometry"):
+            continue
+        geom = make_valid(shape(feature["geometry"]))
+        if geom.is_empty or geom.geom_type not in ("Polygon", "MultiPolygon"):
+            raise ValueError(f"{source}: invalid polygon for {name}")
+        center = geom.representative_point()
+        yield {
+            "source": source,
+            "source_id": str(feature.get("id", f"{name}:{index}")),
+            "name": name,
+            "latitude": center.y,
+            "longitude": center.x,
+            "kind": kind,
+            "prominence": 1.0,
+            "geometry": mapping(geom),
+        }
+
+
 def pbf(path):
     """Stream named place nodes from PBF; no planet-wide node-location cache."""
     import osmium
@@ -207,13 +232,26 @@ def pbf(path):
         }
 
 
-def normalize(kind, path, output, region_kind="region"):
+def normalize(
+    kind,
+    path,
+    output,
+    region_kind="region",
+    boundary_source=None,
+    boundary_kind="neighbourhood",
+    name_field="name",
+):
+    if kind == "place-boundaries" and not boundary_source:
+        raise ValueError("place-boundaries requires --boundary-source")
     readers = {
         "geonames": geonames,
         "osmnames": osmnames,
         "osm-jsonl": osm_jsonl,
         "pbf": pbf,
         "natural-earth": lambda p: natural_earth(p, region_kind),
+        "place-boundaries": lambda p: place_boundaries(
+            p, boundary_source, boundary_kind, name_field
+        ),
     }
     count = 0
     rejected_names = 0
@@ -248,15 +286,40 @@ def normalize(kind, path, output, region_kind="region"):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "kind", choices=["geonames", "osmnames", "osm-jsonl", "pbf", "natural-earth"]
+        "kind",
+        choices=[
+            "geonames",
+            "osmnames",
+            "osm-jsonl",
+            "pbf",
+            "natural-earth",
+            "place-boundaries",
+        ],
     )
     parser.add_argument("input", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--region-kind", choices=sorted(COARSE), default="region")
+    parser.add_argument("--boundary-source")
+    parser.add_argument(
+        "--boundary-kind",
+        default="neighbourhood",
+        choices=["city", "town", "metropolis", "suburb", "quarter", "neighbourhood"],
+    )
+    parser.add_argument("--name-field", default="name")
     args = parser.parse_args()
     print(
         json.dumps(
-            {"records": normalize(args.kind, args.input, args.output, args.region_kind)}
+            {
+                "records": normalize(
+                    args.kind,
+                    args.input,
+                    args.output,
+                    args.region_kind,
+                    args.boundary_source,
+                    args.boundary_kind,
+                    args.name_field,
+                )
+            }
         )
     )
 

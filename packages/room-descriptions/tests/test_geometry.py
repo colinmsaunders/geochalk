@@ -39,7 +39,7 @@ class GeometryTests(unittest.TestCase):
             decode_cell("s").area("km")
 
     def test_invalid_prefixes(self):
-        for value in ("", "_", "9q8yyk", "A", "a", "i", "o", "S", None, 3):
+        for value in ("", "_", "9q8yyk123", "A", "a", "i", "o", "S", None, 3):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 decode_cell(value)
 

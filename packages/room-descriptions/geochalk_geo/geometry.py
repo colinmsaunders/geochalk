@@ -53,9 +53,9 @@ class Cell:
 
 
 def decode_cell(prefix: str) -> Cell:
-    """Decode a canonical lowercase geohash of length 1–5."""
-    if not isinstance(prefix, str) or not 1 <= len(prefix) <= 5:
-        raise ValueError("geohash_prefix must contain 1–5 geohash characters")
+    """Decode a canonical lowercase geohash of length 1–8."""
+    if not isinstance(prefix, str) or not 1 <= len(prefix) <= 8:
+        raise ValueError("geohash_prefix must contain 1–8 geohash characters")
     south, north, west, east = -90.0, 90.0, -180.0, 180.0
     longitude_bit = True
     for character in prefix:
@@ -122,7 +122,7 @@ def geohash_key(prefix: str) -> int:
 
 
 def from_value(value: int, precision: int) -> str:
-    if not 1 <= precision <= 5 or not 0 <= value < 32**precision:
+    if not 1 <= precision <= 8 or not 0 <= value < 32**precision:
         raise ValueError("invalid geohash value or precision")
     return "".join(
         ALPHABET[(value >> (5 * i)) & 31] for i in reversed(range(precision))
@@ -135,7 +135,7 @@ def encode(latitude: float, longitude: float, precision: int = 5) -> str:
         and math.isfinite(longitude)
         and -90 <= latitude <= 90
         and -180 <= longitude <= 180
-        and 1 <= precision <= 5
+        and 1 <= precision <= 8
     ):
         raise ValueError("invalid coordinates or precision")
     longitude = (longitude + 180) % 360 - 180

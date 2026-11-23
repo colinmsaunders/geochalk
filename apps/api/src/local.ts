@@ -8,7 +8,7 @@ import { MemoryStore } from "./memory";
 import { WebSocketServer, type WebSocket } from "ws";
 const gazetteerPath =
   process.env.GEOCHALK_GAZETTEER_PATH ??
-  resolve("artifacts/room-descriptions/geochalk-gazetteer-v1-20261121.sqlite");
+  resolve("artifacts/room-descriptions/geochalk-gazetteer-v1-20261123.sqlite");
 const seedPath =
   process.env.GEOCHALK_LOCAL_SEED_PATH ??
   resolve("artifacts/local-seed/production-posts.json");

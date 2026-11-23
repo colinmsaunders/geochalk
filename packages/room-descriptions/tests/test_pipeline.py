@@ -46,7 +46,16 @@ class PipelineTests(unittest.TestCase):
             }
             self.assertEqual(
                 {t for t in tables if not t.startswith("sqlite_")},
-                {"places", "room_anchors", "metadata"},
+                {
+                    "places",
+                    "room_anchors",
+                    "metadata",
+                    "fine_features",
+                    "fine_index",
+                    "fine_index_node",
+                    "fine_index_parent",
+                    "fine_index_rowid",
+                },
             )
             self.assertEqual(
                 db.execute(
@@ -131,7 +140,7 @@ class PipelineTests(unittest.TestCase):
 
     def test_invalid_input(self):
         with Gazetteer(self.path) as g:
-            for prefix in ("", "_", "abcdef", "9Q8Y", "9q!", None):
+            for prefix in ("", "_", "9q8yyk123", "9Q8Y", "9q!", None):
                 with self.subTest(prefix=prefix), self.assertRaises(ValueError):
                     g.get_geoname(prefix)
             with self.assertRaises(ValueError):

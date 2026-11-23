@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { alphabet, roomSchema } from "@geochalk/shared";
+import { createFineLookup } from "./fine-geoname";
 
 export interface Geoname {
   name: string;
@@ -26,11 +27,16 @@ export function createGeonameLookup(path: string) {
     WHERE a.geohash_key=?
   `);
   const cache = new Map<string, Geoname | null>();
+  const fineLookup = createFineLookup(db);
   return (room: string): Geoname | undefined => {
     const prefix = roomSchema.parse(room);
     if (prefix === "_") return undefined;
     const cached = cache.get(prefix);
-    if (cached !== undefined) return cached ?? undefined;
+    if (cached !== undefined) {
+      cache.delete(prefix);
+      cache.set(prefix, cached);
+      return cached ?? undefined;
+    }
 
     let result: Geoname | undefined;
     for (let parent = prefix; parent.length > 0; parent = parent.slice(0, -1)) {
@@ -38,14 +44,16 @@ export function createGeonameLookup(path: string) {
       for (const character of parent) {
         key = key * 32 + alphabet.indexOf(character);
       }
-      const row = lookup.get(key) as Geoname | undefined;
+      const row =
+        (lookup.get(key) as Geoname | undefined) ??
+        (parent.length === 7 ? fineLookup?.(parent) : undefined);
       if (row) {
         result = row;
         break;
       }
     }
     cache.set(prefix, result ?? null);
-    if (cache.size > 100_000) cache.clear();
+    if (cache.size > 100_000) cache.delete(cache.keys().next().value!);
     return result;
   };
 }
