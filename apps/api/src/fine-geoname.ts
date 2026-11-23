@@ -54,7 +54,8 @@ export function createFineLookup(db: DatabaseSync) {
     const { south, north, west, east } = bounds(prefix);
     const lat = (south + north) / 2;
     const lon = (west + east) / 2;
-    const angle = radiusKm / earthRadiusKm;
+    const cityOnly = prefix.length === 5;
+    const angle = cityOnly ? 0 : radiusKm / earthRadiusKm;
     const dy = angle / radians;
     const dx =
       Math.asin(Math.min(1, Math.sin(angle) / Math.cos(lat * radians))) /
@@ -83,6 +84,11 @@ export function createFineLookup(db: DatabaseSync) {
         lat + dy,
         lat - dy,
       ) as unknown as Feature[]) {
+        if (
+          cityOnly &&
+          (!feature.polygon || neighborhoodKinds.has(feature.kind))
+        )
+          continue;
         if (feature.polygon && feature.area !== null) {
           const rings = JSON.parse(feature.polygon) as Ring[];
           const match = { feature, value: feature.area, rings };

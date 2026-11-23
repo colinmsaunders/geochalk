@@ -5,7 +5,7 @@ A Python offline builder and read-only Python runtime. The generated SQLite file
 ```python
 from geochalk_geo import configure, get_geoname, get_room_description
 
-configure("/data/geochalk-gazetteer-v1-20261123.sqlite", cache_size=100_000)
+configure("/data/geochalk-gazetteer-v1-20261123-municipal.sqlite", cache_size=100_000)
 place = get_geoname("9q8yy")
 print(place.name, place.latitude, place.longitude, place.importance)
 print(get_room_description("9q8yy"))
@@ -14,7 +14,7 @@ print(get_room_description("9q8yy", "meters"))
 
 Alternatively set `GEOCHALK_GAZETTEER` to the database path, or use an explicit `Gazetteer(path)` context manager. The runtime accepts lowercase geohashes of length 1–8. Units are exactly `miles` or `meters`.
 
-At precision 7, lookup uses the smallest containing neighborhood polygon, the nearest neighborhood point within 1 km, a containing city boundary, or the existing parent anchor, in that order. For point matches inside a known city, candidates outside that city are excluded. Precision 8 inherits the precision-7 name. An explicit stored anchor wins at its own precision. Older artifacts still resolve via parent anchors.
+At precision 5, the city or municipality containing the room center supplies the name. Rooms without a containing municipality still use their parent anchor. At precision 7, lookup uses the smallest containing neighborhood polygon, the nearest neighborhood point within 1 km, a containing city boundary, or the existing parent anchor, in that order. For point matches inside a known city, candidates outside that city are excluded. Precision 8 inherits the precision-7 name. An explicit stored anchor wins at its own precision. Older artifacts still resolve via parent anchors.
 
 ## Install and test
 
@@ -70,6 +70,14 @@ geochalk-geo-normalize place-boundaries \
   artifacts/room-descriptions/sources/datasf-neighborhoods.geojson \
   --boundary-source datasf-j2bu-swwd --name-field nhood \
   --output artifacts/room-descriptions/datasf-neighborhoods.jsonl
+curl -fLG 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_ACS2026/MapServer/28/query' \
+  --data-urlencode "where=STATE = '06'" --data-urlencode 'outFields=BASENAME,GEOID' \
+  --data 'outSR=4326&f=geojson&geometryPrecision=5&maxAllowableOffset=0.0001' \
+  -o artifacts/room-descriptions/sources/census-california-places.geojson
+geochalk-geo-normalize place-boundaries \
+  artifacts/room-descriptions/sources/census-california-places.geojson \
+  --boundary-source us-census-tiger-2026-ca --boundary-kind city --name-field BASENAME \
+  --output artifacts/room-descriptions/census-california-places.jsonl
 
 geochalk-geo-build \
   artifacts/room-descriptions/geonames.jsonl \
@@ -79,19 +87,20 @@ geochalk-geo-build \
   artifacts/room-descriptions/regions.jsonl \
   artifacts/room-descriptions/oceans.jsonl \
   artifacts/room-descriptions/datasf-neighborhoods.jsonl \
+  artifacts/room-descriptions/census-california-places.jsonl \
   --source-manifest artifacts/room-descriptions/sources/sources.json \
   --build-date 2026-11-23T00:00:00Z \
-  --output artifacts/room-descriptions/geochalk-gazetteer-v1-20261123.sqlite
+  --output artifacts/room-descriptions/geochalk-gazetteer-v1-20261123-municipal.sqlite
 
-geochalk-geo-validate artifacts/room-descriptions/geochalk-gazetteer-v1-20261123.sqlite \
-  --samples 10000 --output artifacts/room-descriptions/geochalk-gazetteer-v1-20261123.validation.json
+geochalk-geo-validate artifacts/room-descriptions/geochalk-gazetteer-v1-20261123-municipal.sqlite \
+  --samples 10000 --output artifacts/room-descriptions/geochalk-gazetteer-v1-20261123-municipal.validation.json
 ```
 
 Normalization streams the OSMNames gzip without expanding the multi-GB TSV onto disk. Streets are rejected before parsing their sometimes very large address fields. Empty or symbol-only names are counted and rejected. All other malformed records fail the import. Normalized JSONL publishes atomically; a `.partial` file is never accepted as a finished output. Download manifests record URLs, versions, sizes, SHA-256 and retrieval date. Natural Earth sometimes repeats IDs across features; normalization retains both the original `ne_id` and a dataset/ID/component identifier.
 
 ### Current OSM alternatives
 
-The fine lookup uses [DataSF Analysis Neighborhoods](https://data.sf.gov/d/p5b7-5n3h) for San Francisco and place points for cities without polygon inputs. To add city boundaries, normalize a WGS84 GeoJSON FeatureCollection with `place-boundaries --boundary-kind city --boundary-source <dataset-id>`. Use `--name-field` to select the feature property containing the name. Split polygons at the antimeridian before import.
+The fine lookup uses [DataSF Analysis Neighborhoods](https://data.sf.gov/d/p5b7-5n3h) for San Francisco and place points for cities without neighborhood polygons. California municipal boundaries come from the [U.S. Census Bureau TIGERweb incorporated places layer](https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_ACS2026/MapServer/28). To add city boundaries, normalize a WGS84 GeoJSON FeatureCollection with `place-boundaries --boundary-kind city --boundary-source <dataset-id>`. Use `--name-field` to select the feature property containing the name. Split polygons at the antimeridian before import.
 
 For a newer snapshot, process local OSM PBF files or exported JSONL instead of OSMNames. Do not run a million-place query against a public interactive Overpass instance.
 
@@ -136,7 +145,7 @@ The published database contains `places`, `room_anchors`, `metadata`, and SQLite
 
 Geohash keys use a sentinel bit: start at integer 1 and shift left five bits for each geohash character, adding the character value. Thus `0` is 32 and `00` is 1,024; leading zeros and differing lengths never collide. Each precision occupies a separate contiguous key interval.
 
-The initial build has exactly **1,082,400 anchors** for levels 1–4 and no level-5 anchors. Every valid level-5 prefix therefore resolves through its populated level-4 parent. That parent anchor **is not necessarily the nearest place** to the level-5 room. Exact lookup is attempted before recursive fallback and results are held in a bounded LRU (default 100,000 entries). Future offline builds can add `--exact-prefix 9q8yy` (repeatable) to select and persist selected level-5 anchors using the local-type spatial tree. Runtime requests never write them.
+The standard build has exactly **1,082,400 anchors** for levels 1–4. A level-5 prefix without a stored anchor or a containing municipality resolves through its populated level-4 parent. Exact lookup comes first and results are held in a bounded LRU (default 100,000 entries). Offline builds can add `--exact-prefix 9q8yy` (repeatable) to persist a specific level-5 anchor using the local-type spatial tree.
 
 `ANALYZE`, `VACUUM`, `integrity_check`, foreign-key checks and complete per-level counts run before publication. A count equal to the size of each key interval, combined with unique integer keys and verified referenced places, proves coverage for every level-1–4 prefix and consequently every level-5 parent fallback. Validators also sample globally and verify query plans use primary-key lookups.
 
@@ -146,7 +155,7 @@ Reproducibility requires identical source bytes, normalized inputs, configuratio
 
 One `Gazetteer` shares a read-only SQLite connection serialized by an RLock; the LRU uses the same lock. It is safe for threads, with one process-level instance. For higher parallelism, instantiate one per worker process. Do not reuse a connection inherited through fork; the runtime detects it. Configure during worker startup, and close at shutdown. Database access uses `mode=ro` and `PRAGMA query_only=ON`; missing paths fail instead of creating an empty database. Runtime has no network implementation or build dependency.
 
-The chat Lambda uses its own Node SQLite reader and reuses the connection across invocations. CDK bundles `artifacts/room-descriptions/geochalk-gazetteer-v1-20261123.sqlite` when present at synthesis time.
+The chat Lambda uses its own Node SQLite reader and reuses the connection across invocations. CDK bundles `artifacts/room-descriptions/geochalk-gazetteer-v1-20261123-municipal.sqlite` when present at synthesis time.
 
 AWS currently allows a **250 MB uncompressed ZIP including layers**, versus **10 GB uncompressed for a container image**. A 60–120 MB database may fit in a ZIP with a small runtime, but the whole deployment must be measured; do not assume every ZIP/layer composition fits. An EFS mount with read-only IAM/POSIX permissions is another option, with VPC/network setup and network-file read latency to measure. Never mutate a mounted live artifact: publish a new version and deploy a new path. Packaging the DB inside an image avoids runtime source/API/network downloads. Sources: [Lambda quotas](https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html), [filesystem access](https://docs.aws.amazon.com/lambda/latest/dg/configuration-filesystem.html).
 

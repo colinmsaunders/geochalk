@@ -46,7 +46,9 @@ export function createGeonameLookup(path: string) {
       }
       const row =
         (lookup.get(key) as Geoname | undefined) ??
-        (parent.length === 7 ? fineLookup?.(parent) : undefined);
+        (parent.length === 5 || parent.length === 7
+          ? fineLookup?.(parent)
+          : undefined);
       if (row) {
         result = row;
         break;

@@ -1,8 +1,12 @@
 # Geographic room description database
 
-## Precision-7 build
+## Municipal lookup
 
-The current artifact is `artifacts/room-descriptions/geochalk-gazetteer-v1-20261123.sqlite`. It occupies **76,038,144 bytes (72.52 MiB)**, retains **1,082,400 precomputed anchors**, and took **140 seconds** to build from normalized inputs. Its local index contains 178,954 point entries and 79 polygon components from 41 [DataSF Analysis Neighborhoods](https://data.sf.gov/d/p5b7-5n3h). Seven-character rooms resolve on demand from the local index and eight-character rooms inherit that name. The [regeneration instructions](../packages/room-descriptions/README.md) cover additional neighborhood and city boundaries.
+The current artifact is `artifacts/room-descriptions/geochalk-gazetteer-v1-20261123-municipal.sqlite`. At five characters, a containing municipality is selected using the requested room center. This build adds California incorporated-place boundaries from the U.S. Census Bureau, so `9q8yy` resolves to San Francisco. Areas without a containing municipality still fall back to a parent anchor.
+
+## Precision-7 build baseline
+
+The original precision-7 artifact occupies **76,038,144 bytes (72.52 MiB)**, retains **1,082,400 precomputed anchors**, and took **140 seconds** to build from normalized inputs. Its local index contains 178,954 point entries and 79 polygon components from 41 [DataSF Analysis Neighborhoods](https://data.sf.gov/d/p5b7-5n3h). Seven-character rooms resolve on demand from the local index and eight-character rooms inherit that name. The [regeneration instructions](../packages/room-descriptions/README.md) cover additional neighborhood and city boundaries.
 
 ## November 21 baseline
 

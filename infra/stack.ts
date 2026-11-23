@@ -19,7 +19,7 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import { existsSync } from "node:fs";
 const gazetteerSourcePath =
-  "artifacts/room-descriptions/geochalk-gazetteer-v1-20261123.sqlite";
+  "artifacts/room-descriptions/geochalk-gazetteer-v1-20261123-municipal.sqlite";
 export interface BackendTarget {
   region: string;
   apiId: string;

@@ -7,7 +7,9 @@ from .geometry import MEAN_EARTH_RADIUS_KM, distance_km
 from .models import Place
 
 NEIGHBORHOODS = {"neighbourhood", "quarter", "suburb"}
-CITY_KINDS = {"city", "town", "metropolis"}
+# A municipal polygon can deduplicate into an existing settlement classified
+# as a village by population. Its geometry still describes a municipality.
+CITY_KINDS = {"city", "town", "metropolis", "village"}
 RADIUS_KM = 1
 SCHEMA = """
 CREATE TABLE fine_features(id INTEGER PRIMARY KEY,
@@ -75,8 +77,8 @@ def contains(rings, x, y):
     return inside
 
 
-def lookup(db, lat, lon):
-    angle = RADIUS_KM / MEAN_EARTH_RADIUS_KM
+def lookup(db, lat, lon, *, city_only=False):
+    angle = 0 if city_only else RADIUS_KM / MEAN_EARTH_RADIUS_KM
     dy = math.degrees(angle)
     dx = math.degrees(math.asin(min(1, math.sin(angle) / math.cos(math.radians(lat)))))
     west, east = lon - dx, lon + dx
@@ -93,6 +95,8 @@ def lookup(db, lat, lon):
         for pid, name, y, x, importance, kind, area, polygon in db.execute(
             QUERY, (east, west, lat + dy, lat - dy)
         ):
+            if city_only and (not polygon or kind in NEIGHBORHOODS):
+                continue
             place = Place(pid, name, y, x, kind=kind, importance=importance)
             if polygon:
                 rings = json.loads(polygon)

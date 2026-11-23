@@ -70,12 +70,16 @@ class Gazetteer:
                 ),
                 None,
             )
-        if len(prefix) == 7 and self._has_fine_index:
-            match = fine_lookup(self._db, *decode_cell(prefix).center)
+        if len(prefix) in (5, 7) and self._has_fine_index:
+            match = fine_lookup(
+                self._db, *decode_cell(prefix).center, city_only=len(prefix) == 5
+            )
             if match:
                 return match
         if len(prefix) > 1:
-            return self._cached(prefix[:-1])
+            place, relation = self._cached(prefix[:-1])
+            # A parent's center can be inside a boundary while the child's is outside.
+            return place, "near" if relation == "in" else relation
         raise LookupError(f"gazetteer has no anchor for {prefix!r}")
 
     def _resolve(self, geohash_prefix: str) -> tuple[Place, str | None]:
@@ -96,9 +100,6 @@ class Gazetteer:
         if unit not in ("miles", "meters"):
             raise ValueError("unit must be 'miles' or 'meters'")
         place, relation = self._resolve(geohash_prefix)
-        # An inherited seven-character label does not prove the subcell is inside.
-        if len(geohash_prefix) == 8 and relation == "in":
-            relation = "near"
         return format_description(
             decode_cell(geohash_prefix), place, unit, spatial_relation=relation
         )
