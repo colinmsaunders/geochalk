@@ -223,7 +223,7 @@ describe("western region preparation", () => {
     });
     const template = Template.fromStack(stack);
     template.resourceCountIs("AWS::CloudFront::Distribution", 1);
-    template.resourceCountIs("AWS::DynamoDB::Table", 3);
+    template.resourceCountIs("AWS::DynamoDB::Table", 4);
     template.resourceCountIs("AWS::Cognito::UserPool", 1);
     template.resourceCountIs("AWS::CertificateManager::Certificate", 1);
     template.hasResourceProperties("AWS::CertificateManager::Certificate", {

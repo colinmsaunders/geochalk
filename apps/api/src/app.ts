@@ -37,6 +37,8 @@ export function createApp(
     insecureLocalCookie?: boolean;
     riskCheck?: LocationRiskCheck;
     roomNameLookup?: (room: string) => Geoname | undefined;
+    webSocketUrl?: string;
+    publishPost?: (post: Post) => Promise<void>;
   } = {},
 ) {
   return async (
@@ -96,6 +98,11 @@ export function createApp(
       };
       if (req.method === "GET" && path === "/health")
         return { status: 200, body: { ok: true } };
+      if (req.method === "GET" && path === "/live") {
+        if (!options.webSocketUrl)
+          throw new ApiError(503, "Live messaging is not configured.");
+        return { status: 200, body: { webSocketUrl: options.webSocketUrl } };
+      }
       const geonameMatch = path.match(/^\/rooms\/([^/]+)\/geoname$/);
       if (req.method === "GET" && geonameMatch) {
         if (!options.roomNameLookup)
@@ -193,6 +200,16 @@ export function createApp(
           createdAt: new Date().toISOString(),
         };
         await store.post(message);
+        if (options.publishPost) {
+          try {
+            await options.publishPost(message);
+          } catch (error) {
+            console.error(
+              "Live post delivery failed",
+              error instanceof Error ? error.name : "UnknownError",
+            );
+          }
+        }
         return { status: 201, body: message };
       }
       const messageMatch = path.match(/^\/messages\/([^/]+)(\/reports)?$/);

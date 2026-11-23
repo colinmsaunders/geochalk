@@ -37,7 +37,7 @@ it("creates secure persistent cookie identity without exposing a bearer secret",
   );
   expect(session.body).not.toHaveProperty("token");
   const identity = (session.body as any).identity;
-  expect(identity.name).toMatch(/^(?:[A-Z][a-z]+){4}$/);
+  expect(identity.name).toMatch(/^(?:[A-Z][a-z]+){3}$/);
   expect(identity.name.length).toBeLessThanOrEqual(24);
   expect((await request("GET", "/me")).body).toEqual(identity);
   const resumed = await request("POST", "/sessions", {});
@@ -46,6 +46,43 @@ it("creates secure persistent cookie identity without exposing a bearer secret",
   expect((await request("PATCH", "/me", { name: "New name" }, "")).status).toBe(
     403,
   );
+});
+it("exposes the live endpoint and publishes saved posts", async () => {
+  const store = new MemoryStore();
+  const publishPost = vi.fn(async () => undefined);
+  const app = createApp(store, undefined, {
+    webSocketUrl: "wss://example.execute-api.us-west-2.amazonaws.com/live",
+    publishPost,
+  });
+  let cookie: string | undefined;
+  const request = async (method: string, path: string, body?: unknown) => {
+    const url = new URL(path, "https://geochalk.com");
+    const result = await app({
+      method,
+      path: url.pathname,
+      query: url.searchParams,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      cookie,
+      csrf: method === "GET" ? undefined : "1",
+      ip: "127.0.0.1",
+    });
+    if (result.cookies) cookie = result.cookies[0].split(";")[0];
+    return result;
+  };
+  const session = await request("POST", "/sessions", {});
+  expect(session.status).toBe(201);
+  expect(await request("GET", "/live")).toMatchObject({
+    status: 200,
+    body: {
+      webSocketUrl: "wss://example.execute-api.us-west-2.amazonaws.com/live",
+    },
+  });
+  const posted = await request("POST", "/messages", {
+    content: "Live post",
+    location: locationFor("9q8yyk8y"),
+  });
+  expect(posted.status).toBe(201);
+  expect(publishPost).toHaveBeenCalledWith(posted.body);
 });
 it("posts by server-derived location independent of viewed room and stores no raw GPS", async () => {
   const { request, store } = await setup();

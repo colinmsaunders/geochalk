@@ -6,6 +6,7 @@ import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as apigw from "aws-cdk-lib/aws-apigatewayv2";
 import { HttpLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
+import { WebSocketLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as deployment from "aws-cdk-lib/aws-s3-deployment";
@@ -59,6 +60,25 @@ export class ChatStack extends cdk.Stack {
       timeToLiveAttribute: "expiresAt",
       removalPolicy: cdk.RemovalPolicy.RETAIN,
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+    const connections = new dynamodb.Table(this, "LiveConnectionsV1", {
+      partitionKey: {
+        name: "connectionId",
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: "expiresAt",
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+    connections.addGlobalSecondaryIndex({
+      indexName: "RoomIndex",
+      partitionKey: { name: "room", type: dynamodb.AttributeType.STRING },
+      sortKey: {
+        name: "connectionId",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.KEYS_ONLY,
     });
     new cdk.CfnOutput(this, "ControlTableName", { value: controls.tableName });
     new cloudwatch.Dashboard(this, "StorageDashboard", {
@@ -125,6 +145,10 @@ export class ChatStack extends cdk.Stack {
       idTokenValidity: cdk.Duration.hours(1),
       accessTokenValidity: cdk.Duration.hours(1),
     });
+    const liveApi = new apigw.WebSocketApi(this, "LiveApi", {
+      apiName: `${this.stackName}-live-api`,
+      routeSelectionExpression: "$request.body.action",
+    });
     new cognito.CfnUserPoolGroup(this, "Moderators", {
       userPoolId: pool.userPoolId,
       groupName: "moderators",
@@ -161,6 +185,9 @@ export class ChatStack extends cdk.Stack {
         POSTS_TABLE_NAME: table.tableName,
         CONTROL_TABLE_NAME: controls.tableName,
         ARCHIVE_TABLE_NAME: archive.tableName,
+        CONNECTIONS_TABLE_NAME: connections.tableName,
+        WEBSOCKET_URL: `wss://${liveApi.apiId}.execute-api.${this.region}.${this.urlSuffix}/live`,
+        WEBSOCKET_MANAGEMENT_URL: `https://${liveApi.apiId}.execute-api.${this.region}.${this.urlSuffix}/live`,
         USER_POOL_ID: pool.userPoolId,
         USER_POOL_CLIENT_ID: poolClient.userPoolClientId,
       },
@@ -171,6 +198,17 @@ export class ChatStack extends cdk.Stack {
     });
     table.grantReadWriteData(fn);
     controls.grantReadWriteData(fn);
+    connections.grantReadWriteData(fn);
+    const liveIntegration = new WebSocketLambdaIntegration("LiveHandler", fn);
+    liveApi.addRoute("$connect", { integration: liveIntegration });
+    liveApi.addRoute("$disconnect", { integration: liveIntegration });
+    liveApi.addRoute("$default", { integration: liveIntegration });
+    const liveStage = new apigw.WebSocketStage(this, "LiveStage", {
+      webSocketApi: liveApi,
+      stageName: "live",
+      autoDeploy: true,
+    });
+    liveStage.grantManagementApiAccess(fn);
     archive.grant(fn, "dynamodb:PutItem", "dynamodb:GetItem");
     const api = new apigw.HttpApi(this, "HttpApi", {
       apiName: `${this.stackName}-api`,
@@ -243,6 +281,7 @@ export class ChatStack extends cdk.Stack {
         value: poolClient.userPoolClientId,
       });
       new cdk.CfnOutput(this, "ApiFunctionName", { value: fn.functionName });
+      new cdk.CfnOutput(this, "LiveWebSocketUrl", { value: liveStage.url });
       return;
     }
     const assetOrigin = target
@@ -373,5 +412,6 @@ export class ChatStack extends cdk.Stack {
     new cdk.CfnOutput(this, "TableName", {
       value: target?.tableName ?? table.tableName,
     });
+    new cdk.CfnOutput(this, "LiveWebSocketUrl", { value: liveStage.url });
   }
 }

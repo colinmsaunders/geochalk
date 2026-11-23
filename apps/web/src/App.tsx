@@ -6,6 +6,7 @@ import {
   roomSchema,
   command,
   encode,
+  encodePostId,
   type Identity,
   type Post,
   type Page,
@@ -48,12 +49,24 @@ const levels = [
 function initialRoom() {
   return roomFromPath(location.pathname);
 }
+function mergePosts(current: Post[], incoming: Post[]): Post[] {
+  const bySlot = new Map(current.map((post) => [postSlot(post.postId), post]));
+  for (const post of incoming) bySlot.set(postSlot(post.postId), post);
+  return [...bySlot.values()]
+    .sort(
+      (a, b) =>
+        b.createdAt.localeCompare(a.createdAt) ||
+        b.postId.localeCompare(a.postId),
+    )
+    .slice(0, ROOM_CAPACITY);
+}
 export default function App() {
   const [room, setRoom] = useState(initialRoom);
   const prefix = room === "_" ? "" : room;
   const [user, setUser] = useState<Identity>();
   const [roomName, setRoomName] = useState("");
   const [messages, setMessages] = useState<Post[]>([]);
+  const [pendingPosts, setPendingPosts] = useState<Post[]>([]);
   const [reactions, setReactions] = useState<Record<string, { flag: boolean }>>(
     {},
   );
@@ -102,6 +115,7 @@ export default function App() {
     historyMode.current = false;
     setHistoryPage(false);
     setMessages([]);
+    setPendingPosts([]);
     setCursor(undefined);
     setLoading(true);
     async function refresh() {
@@ -109,7 +123,7 @@ export default function App() {
         const page = await api<Page>(`/rooms/${room}/messages`);
         if (stopped || serial !== generation.current || historyMode.current)
           return;
-        setMessages(page.posts);
+        setMessages((old) => mergePosts(old, page.posts));
         setCursor(page.cursor);
       } catch (e) {
         if (!stopped) setError((e as Error).message);
@@ -120,6 +134,81 @@ export default function App() {
     void refresh();
     return () => {
       stopped = true;
+    };
+  }, [room]);
+  useEffect(() => {
+    if (!room) return;
+    let stopped = false;
+    let socket: WebSocket | undefined;
+    let reconnectTimer: number | undefined;
+    let retry = 0;
+    async function connectLive() {
+      try {
+        const { webSocketUrl } = await api<{ webSocketUrl: string }>("/live");
+        if (stopped) return;
+        socket = new WebSocket(
+          `${webSocketUrl}?room=${encodeURIComponent(room)}`,
+        );
+        socket.onopen = () => {
+          retry = 0;
+          if (historyMode.current) return;
+          void api<Page>(`/rooms/${room}/messages`)
+            .then((page) => {
+              if (stopped || historyMode.current) return;
+              setMessages((old) => mergePosts(old, page.posts));
+              setCursor(page.cursor);
+            })
+            .catch(() => undefined);
+        };
+        socket.onmessage = (event) => {
+          if (stopped || historyMode.current) return;
+          try {
+            const message = JSON.parse(String(event.data)) as {
+              type?: string;
+              post?: Post;
+            };
+            const post = message.post;
+            if (
+              message.type !== "post" ||
+              !post ||
+              typeof post.postId !== "string" ||
+              typeof post.originGeohash !== "string" ||
+              typeof post.content !== "string" ||
+              (room !== "_" && !post.originGeohash.startsWith(room))
+            )
+              return;
+            setMessages((old) => mergePosts(old, [post]));
+            setPendingPosts((old) =>
+              old.filter(
+                (pending) =>
+                  pending.content !== post.content ||
+                  pending.displayName !== post.displayName ||
+                  pending.authorId !== post.authorId,
+              ),
+            );
+          } catch {
+            // Ignore malformed live events.
+          }
+        };
+        socket.onclose = () => {
+          if (stopped) return;
+          const delay = Math.min(1000 * 2 ** retry, 30000);
+          retry += 1;
+          reconnectTimer = window.setTimeout(() => void connectLive(), delay);
+        };
+        socket.onerror = () => socket?.close();
+      } catch {
+        if (stopped) return;
+        const delay = Math.min(1000 * 2 ** retry, 30000);
+        retry += 1;
+        reconnectTimer = window.setTimeout(() => void connectLive(), delay);
+      }
+    }
+    void connectLive();
+    return () => {
+      stopped = true;
+      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
+      socket?.close();
     };
   }, [room]);
   useEffect(() => {
@@ -165,6 +254,8 @@ export default function App() {
     e.preventDefault();
     if (!room || !draft.trim() || sending) return;
     setError("");
+    const submittedText = draft;
+    let pendingId: string | undefined;
     try {
       const cmd = command(draft.trim(), room);
       if (cmd) {
@@ -182,15 +273,33 @@ export default function App() {
         return;
       }
       setSending(true);
+      const content = submittedText.trim();
+      pendingId = encodePostId(crypto.getRandomValues(new Uint8Array(20)));
+      const pending: Post = {
+        postId: pendingId,
+        originGeohash: (room === "_" ? "" : room).padEnd(8, "0"),
+        authorId: user?.id ?? "guest:pending",
+        displayName: user?.name ?? "You",
+        content,
+        createdAt: new Date().toISOString(),
+      };
+      setPendingPosts((old) => [pending, ...old]);
+      setDraft("");
       const location = await freshPostingLocation();
+      const originGeohash = encode(location.latitude, location.longitude, 8);
+      setPendingPosts((old) =>
+        old.map((post) =>
+          post.postId === pendingId ? { ...post, originGeohash } : post,
+        ),
+      );
       const result = await api<Post>("/messages", {
         method: "POST",
         body: JSON.stringify({
-          content: draft,
+          content,
           location,
         }),
       });
-      setDraft("");
+      setPendingPosts((old) => old.filter((post) => post.postId !== pendingId));
       setNotice(
         `Posted from #${result.originGeohash}. Your viewing room does not determine where you post.`,
       );
@@ -200,14 +309,7 @@ export default function App() {
           result.originGeohash.startsWith(currentRoom.current)) &&
         !historyMode.current
       ) {
-        setMessages((old) =>
-          [
-            result,
-            ...old.filter(
-              (m) => postSlot(m.postId) !== postSlot(result.postId),
-            ),
-          ].slice(0, ROOM_CAPACITY),
-        );
+        setMessages((old) => mergePosts(old, [result]));
         setTimeout(
           () =>
             end.current?.scrollIntoView({
@@ -218,6 +320,11 @@ export default function App() {
         );
       }
     } catch (e) {
+      if (pendingId)
+        setPendingPosts((old) =>
+          old.filter((post) => post.postId !== pendingId),
+        );
+      setDraft((current) => current || submittedText);
       setError((e as Error).message);
     } finally {
       setSending(false);
@@ -264,7 +371,7 @@ export default function App() {
       setError((e as Error).message);
     }
   }
-  const sorted = [...messages].sort(
+  const sorted = [...messages, ...pendingPosts].sort(
     (a, b) =>
       b.createdAt.localeCompare(a.createdAt) ||
       b.postId.localeCompare(a.postId),
@@ -406,11 +513,16 @@ export default function App() {
               )}
               {!loading &&
                 sorted.map((post) => {
+                  const pending = pendingPosts.some(
+                    (item) => item.postId === post.postId,
+                  );
                   const state = reactions[post.postId] ?? {
                     flag: false,
                   };
-                  const age = timeAgo(post.createdAt);
-                  const distance = distanceAway(post.originGeohash, room);
+                  const age = pending ? "just now" : timeAgo(post.createdAt);
+                  const distance = pending
+                    ? "right here"
+                    : distanceAway(post.originGeohash, room);
                   return (
                     <li
                       className="post list-group-item bg-transparent text-body px-0"
@@ -429,7 +541,8 @@ export default function App() {
                       </a>{" "}
                       <p className="post-content mb-0">{post.content}</p>
                       <span className="post-context" aria-hidden="true">
-                        {" "}&mdash;{" "}
+                        {" "}
+                        &mdash;{" "}
                       </span>
                       <span className="post-context">{post.displayName}</span>
                       <span className="post-context">
