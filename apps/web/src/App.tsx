@@ -152,6 +152,7 @@ export default function App() {
         `/rooms/suggest?geohash=${hash}`,
       );
       go(result.room);
+      window.requestAnimationFrame(() => postInput.current?.focus());
     } catch {
       setNotice(
         "Location is unavailable. Choose a place below or enter a geohash to get started.",
