@@ -7,6 +7,7 @@ import {
   UpdateCommand,
   DeleteCommand,
   BatchWriteCommand,
+  BatchGetCommand,
   type BatchWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
 import {
@@ -225,6 +226,55 @@ export class DynamoStore implements Store {
     const posts = await this.roomPosts(room);
     const blocked = await this.blocked(room);
     return pagePosts(posts, blocked, room, cursor, limit);
+  }
+  async listSlots(room: string): Promise<Post[]> {
+    // Address the exact lowercase hex keys. Old Base32 rows can still share
+    // this partition, so a partition scan may read more than 256 records.
+    const keys = Array.from({ length: ROOM_CAPACITY }, (_, slot) => ({
+      pk: room,
+      sk: slot.toString(16).padStart(2, "0"),
+    }));
+    const [batches, blocked] = await Promise.all([
+      Promise.all(
+        [keys.slice(0, 100), keys.slice(100, 200), keys.slice(200)].map(
+          (batch) => this.readSlotBatch(batch),
+        ),
+      ),
+      this.blocked(room),
+    ]);
+    return batches.flat().filter((post) => !blocked.has(post.postId));
+  }
+
+  private async readSlotBatch(keys: { pk: string; sk: string }[]) {
+    const posts: Post[] = [];
+    let pending: Record<string, unknown>[] = keys;
+    for (let attempt = 0; attempt < 7; attempt++) {
+      const page = await client.send(
+        new BatchGetCommand({
+          RequestItems: {
+            [this.postsTable]: { Keys: pending, ConsistentRead: true },
+          },
+        }),
+      );
+      for (const { pk, sk, ...post } of page.Responses?.[this.postsTable] ??
+        []) {
+        const id = postIdSchema.safeParse(post.postId);
+        if (id.success && sk === postSlot(id.data)) posts.push(post as Post);
+      }
+      pending = page.UnprocessedKeys?.[this.postsTable]?.Keys ?? [];
+      if (!pending.length) return posts;
+      if (attempt < 6)
+        await new Promise((resolve) =>
+          setTimeout(
+            resolve,
+            Math.min(1000, 25 * 2 ** attempt) + Math.floor(Math.random() * 25),
+          ),
+        );
+    }
+    throw new ApiError(
+      503,
+      "Room slots are temporarily unavailable. Please retry.",
+    );
   }
   async get(originGeohash: string, postId: string) {
     originSchema.parse(originGeohash);

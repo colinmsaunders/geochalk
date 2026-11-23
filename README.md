@@ -28,8 +28,8 @@ npm run synth
 
 ## Included in Milestone 1
 
-- React/Vite frontend with rooms at `/@<geohash>` (for example `/@9q8yu`) and Earth at `/@`, child and parent navigation, optional browsing geolocation, required fresh posting location, activity-based smart zoom, and a responsive chat interface.
-- Public room reads, guest sessions, optional Cognito email accounts, slash commands, and HTTP polling every five seconds while visible. Guest display names are not unique.
+- React/Vite frontend with fixed room centers in shareable URLs such as `/@9q8yy?lat=37.775&lon=-122.419`. Legacy geohash URLs use their cell centers. Earth stays at `/@`.
+- Public room reads, WebSocket updates, guest sessions, optional Cognito email accounts and slash commands. Room navigation preserves the center on zoom and moves by half a cell with each arrow.
 - Server-derived precision-8 posting origins, fresh location checks, persistent HttpOnly guest cookies, and short-lived coarse observations for motion checks.
 - Nine unconditional denormalized writes into independent rooms. Each room has 256 random hexadecimal slots; collisions replace posts without chronological eviction or post TTL.
 - Append-only storage of each original post, including after room eviction or deletion; room reads return all surviving posts, up to 256.
@@ -55,7 +55,7 @@ Geochalk architecture/schema v1 is deployed with fresh data in account 451261323
 
 Remaining launch work: load/cost testing, alert routing, operational moderation, verified viewer-IP protection behind CloudFront, and broader content abuse handling. Browser GPS is spoofable; coarse motion checks can race. Full-room reads and durable moderation markers have growing read costs. Broad prefixes may become hot. These tradeoffs are documented in the architecture.
 
-Other limits: polling rather than WebSockets, API-only moderator tools, no password-reset/token-refresh UI, no account/guest merging, attachments, full-text search or map tiles. Public precision-8 origins reveal location; raw GPS history is not stored. Optional Cognito tokens remain in localStorage; guest identity uses a secure cookie.
+Other limits include API-only moderator tools, no password-reset/token-refresh UI, no account/guest merging, attachments, full-text search or map tiles. Posting makes the reported latitude and longitude public and retains them in the append-only archive. Reading a room does not require location permission. Optional Cognito tokens remain in localStorage. Guest identity uses a secure cookie.
 
 ## Commands
 
@@ -63,7 +63,7 @@ Other limits: polling rather than WebSockets, API-only moderator tools, no passw
 
 New guests and account signups start with a random display name such as `CuriousRedGopher`: an adjective, color, and animal, each a single capitalized word. Guests can change it with `/nick`, and account signups can edit it before registering. Display names are not unique account identifiers.
 
-Enter sends; Shift+Enter creates a newline. View older messages pauses polling; return to live to resume. Local sessions and limits reset with the local API process.
+Enter sends. Shift+Enter creates a newline. Local sessions and limits reset with the local API process.
 
 ## Geographic room descriptions
 

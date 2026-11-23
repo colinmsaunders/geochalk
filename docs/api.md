@@ -11,6 +11,7 @@ All routes start with `/api`. JSON errors are `{error:string}`. Public room read
 | GET    | `/rooms/suggest?geohash=c23nb62w`          | Prefix 0–8 (`_` for 0)        | `{room,counts,windowMinutes:15,targetMessages:3}`                                   |
 | GET    | `/rooms/:prefix/geoname`                   | Geohash prefix 1–8            | `{name,latitude,longitude,importance}` from the local read-only gazetteer           |
 | GET    | `/rooms/:prefix/messages?cursor=…`         | Optional cursor               | `{posts:Post[],cursor?:string}`                                                     |
+| GET    | `/posts?lat=37.775&lon=-122.419&precision=5` | Fixed center and precision 1–8 | `{lat,lon,precision,bounds,prefixes,posts,count}`                                   |
 | POST   | `/messages`                                | `{content,location}`          | 201 `Post`                                                                          |
 | DELETE | `/messages/:postId?originGeohash=c23nb62w` | Owner or moderator            | `{deleted:true}`                                                                    |
 | POST   | `/messages/:postId/reports`                | `{originGeohash,reason}`      | 201 `{reported:true}`                                                               |
@@ -33,11 +34,13 @@ Example posting request (timestamp must be the fresh browser fix timestamp, not 
 
 Location accuracy must be positive and at most 5,000 meters; timestamp is epoch milliseconds within 60 seconds of receipt, allowing five seconds future skew. Server-derived `originGeohash` always has eight characters. Extra viewing-room parameters are ignored. Room-addressed posting is unsupported. Missing permission/fix prevents posting, not browsing.
 
-The complete [Post payload and nine precision levels](architecture.md) define shared identity across copies. `postId` is 32 uppercase RFC 4648 Base32 characters; the first byte decoded from Base32, rendered as two lowercase hex characters, identifies its slot. `createdAt` is server ISO UTC time. `displayName` is a non-unique snapshot. Public `authorId` determines ownership, not the name. Location fields are transient; posts expose only the derived origin cell, which can still reveal sensitive whereabouts.
+The complete [Post payload and nine precision levels](architecture.md) define shared identity across copies. `postId` is 32 uppercase RFC 4648 Base32 characters. The first byte decoded from Base32, rendered as two lowercase hex characters, identifies its slot. `createdAt` is server ISO UTC time. `displayName` is a non-unique snapshot, and public `authorId` determines ownership. New posts expose their original `latitude` and `longitude`. Older posts omit those fields and use their precision-8 cell center for geographic filtering. Fix accuracy and client timestamps are used for admission.
 
 `Identity` is `{id,name,moderator}`. `Report` is `{id,postId,originGeohash,authorId,reason,reporterId,createdAt}`. Reasons are trimmed 3–500 characters; names 2–24 letters, digits, spaces or `_ . -`; content is plain text trimmed to 1–2,000 characters. Request bodies are capped at 16,000 characters.
 
 Room responses contain up to 256 surviving unmoderated posts sorted newest first. Each room stores at most 256 slots; there is no promise of the latest 256. Cursors are room-specific and not snapshot isolation. Deleted posts are omitted from rooms, without tombstones in slots. All newly accepted posts are also retained in an append-only archive, including after deletion or slot eviction.
+
+Centered reads query at most four storage prefixes. `bounds` contains `south`, `north`, `west`, `east`, and `crossesAntimeridian`. Wrapped bounds have a west value greater than the east value. The server filters and deduplicates across the queried partitions and returns up to 256 posts, with `count` reporting how many it returned. The legacy prefix endpoint keeps its existing response format.
 
 Posting is not HTTP-idempotent. There is no client request ID. Obtain a fresh fix on each attempt. Batch retries reuse the server post ID, but retrying an HTTP request can create another post. A 503 can mean partial publication; refresh before retrying. Duplicate text within 30 seconds is rejected as abuse rather than returning a previous result.
 
@@ -46,6 +49,12 @@ Codes include 409 conflicting immutable post ID, 400 malformed input/location, 4
 Guest cookies last 30 days and are reused across visits. Optional Cognito signup/sign-in remains unchanged. Sign-out clears the Cognito token and returns to the existing guest cookie. Cognito token refresh, guest revocation and account/guest merging are not implemented.
 
 ## curl examples
+
+Read the room centered on a fixed location:
+
+```sh
+curl -fsS 'https://geochalk.com/api/posts?lat=37.775&lon=-122.419&precision=5'
+```
 
 Read all current posts in a room (`_` is the global room):
 

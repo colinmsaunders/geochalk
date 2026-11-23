@@ -106,6 +106,9 @@ export class MemoryStore implements Store {
       limit,
     );
   }
+  async listSlots(room: string) {
+    return (await this.list(room)).posts;
+  }
   async get(origin: string, postId: string) {
     originSchema.parse(origin);
     const post = this.archive.get(postId);

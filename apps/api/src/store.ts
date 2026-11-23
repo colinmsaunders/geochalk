@@ -3,9 +3,14 @@ import {
   ROOM_CAPACITY,
   postIdSchema,
   postSlot,
+  centeredRoomGeometry,
+  postCoordinates,
+  roomContains,
   type Identity,
   type Post,
   type Page,
+  type Room,
+  type RoomPosts,
 } from "@geochalk/shared";
 export class ApiError extends Error {
   constructor(
@@ -47,6 +52,7 @@ export interface Store {
   ): Promise<void>;
   isBanned(actor: string): Promise<boolean>;
   list(room: string, cursor?: string, limit?: number): Promise<Page>;
+  listSlots(room: string): Promise<Post[]>;
   post(post: Post): Promise<void>;
   get(originGeohash: string, postId: string): Promise<Post | undefined>;
   remove(post: Post): Promise<void>;
@@ -54,6 +60,25 @@ export interface Store {
   reports(cursor?: string): Promise<{ reports: Report[]; cursor?: string }>;
   ban(id: string, banned: boolean): Promise<void>;
   counts(rooms: string[], now?: number): Promise<Record<string, number>>;
+}
+
+export async function getRoomPosts(
+  store: Store,
+  room: Room,
+): Promise<RoomPosts> {
+  const { bounds, prefixes } = centeredRoomGeometry(room);
+  const cells = await Promise.all(
+    prefixes.map((prefix) => store.listSlots(prefix)),
+  );
+  const unique = new Map<string, Post>();
+  for (const post of cells.flat()) {
+    if (!roomContains(bounds, postCoordinates(post))) continue;
+    const existing = unique.get(post.postId);
+    if (!existing || comparePosts(post, existing) < 0)
+      unique.set(post.postId, post);
+  }
+  const posts = [...unique.values()].sort(comparePosts).slice(0, ROOM_CAPACITY);
+  return { ...room, bounds, prefixes, posts, count: posts.length };
 }
 export const slotKey = (room: string, postId: string) => ({
   pk: room,

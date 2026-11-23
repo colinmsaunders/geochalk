@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import {
   DynamoDBDocumentClient,
   BatchWriteCommand,
+  BatchGetCommand,
   PutCommand,
   QueryCommand,
   DeleteCommand,
@@ -15,6 +16,8 @@ const post = {
   authorId: "guest:a",
   displayName: "A",
   createdAt: "2026-11-11T12:00:00.000Z",
+  latitude: 47.6,
+  longitude: -122.3,
 };
 afterEach(() => vi.restoreAllMocks());
 it("makes nine unconditional denormalized writes and retries only unprocessed items", async () => {
@@ -50,6 +53,33 @@ it("makes nine unconditional denormalized writes and retries only unprocessed it
         },
       },
     });
+});
+it("reads exactly the 256 current keys and retries only unprocessed slot reads", async () => {
+  const keysRead: string[][] = [];
+  const send = vi
+    .spyOn(DynamoDBDocumentClient.prototype, "send")
+    .mockImplementation((async (c: any) => {
+      if (c instanceof QueryCommand) return { Items: [] };
+      expect(c).toBeInstanceOf(BatchGetCommand);
+      const { Keys, ConsistentRead } = c.input.RequestItems.posts;
+      expect(ConsistentRead).toBe(true);
+      for (const key of Keys) expect(key.pk).toBe("c");
+      keysRead.push(Keys.map((key: { sk: string }) => key.sk));
+      if (Keys[0].sk === "00" && Keys.length > 1)
+        return { UnprocessedKeys: { posts: { Keys: [Keys[0]] } } };
+      if (Keys[0].sk === "00")
+        return { Responses: { posts: [{ ...post, pk: "c", sk: "00" }] } };
+      return {};
+    }) as any);
+  expect(
+    await new DynamoStore("posts", "control", "archive").listSlots("c"),
+  ).toEqual([post]);
+  const expected = Array.from({ length: 256 }, (_, n) =>
+    n.toString(16).padStart(2, "0"),
+  );
+  expect(keysRead.slice(0, 3).flat()).toEqual(expected);
+  expect(keysRead.slice(3)).toEqual([["00"]]);
+  expect(send).toHaveBeenCalledTimes(5);
 });
 it("reads every DynamoDB page, filters moderation and sorts timestamps rather than slots", async () => {
   let pages = 0;

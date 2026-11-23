@@ -1,5 +1,6 @@
 import { z } from "zod";
 export { generateDisplayName, nameWords } from "./names";
+export * from "./rooms";
 export const alphabet = "0123456789bcdefghjkmnpqrstuvwxyz";
 export const roomSchema = z
   .string()
@@ -73,6 +74,9 @@ export interface Post {
   displayName: string;
   content: string;
   createdAt: string;
+  /** Older posts only have an origin cell. */
+  latitude?: number;
+  longitude?: number;
 }
 export interface Identity {
   id: string;

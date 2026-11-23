@@ -8,13 +8,14 @@ import {
   postSchema,
   postingRoom,
   roomSchema,
+  parseRoomQuery,
   type Identity,
   type Post,
   encodePostId,
   postIdSchema,
   originSchema,
 } from "@geochalk/shared";
-import { ApiError, type Store } from "./store";
+import { ApiError, getRoomPosts, type Store } from "./store";
 import { admitPost, type LocationRiskCheck } from "./admission";
 import type { Geoname } from "./geoname";
 export interface Request {
@@ -98,6 +99,11 @@ export function createApp(
       };
       if (req.method === "GET" && path === "/health")
         return { status: 200, body: { ok: true } };
+      if (req.method === "GET" && path === "/posts")
+        return {
+          status: 200,
+          body: await getRoomPosts(store, parseRoomQuery(req.query)),
+        };
       if (req.method === "GET" && path === "/live") {
         if (!options.webSocketUrl)
           throw new ApiError(503, "Live messaging is not configured.");
@@ -198,6 +204,8 @@ export function createApp(
           displayName: user.name,
           content,
           createdAt: new Date().toISOString(),
+          latitude: location.latitude,
+          longitude: location.longitude,
         };
         await store.post(message);
         if (options.publishPost) {

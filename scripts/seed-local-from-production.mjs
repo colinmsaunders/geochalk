@@ -24,13 +24,15 @@ do {
     new ScanCommand({
       TableName: tableName,
       ProjectionExpression:
-        "#postId, #originGeohash, #displayName, #content, #createdAt",
+        "#postId, #originGeohash, #displayName, #content, #createdAt, #latitude, #longitude",
       ExpressionAttributeNames: {
         "#postId": "postId",
         "#originGeohash": "originGeohash",
         "#displayName": "displayName",
         "#content": "content",
         "#createdAt": "createdAt",
+        "#latitude": "latitude",
+        "#longitude": "longitude",
       },
       ExclusiveStartKey: cursor,
     }),
@@ -51,6 +53,10 @@ do {
       displayName: item.displayName,
       content: item.content,
       createdAt: item.createdAt,
+      ...(typeof item.latitude === "number" &&
+      typeof item.longitude === "number"
+        ? { latitude: item.latitude, longitude: item.longitude }
+        : {}),
     });
   }
   posts.sort((a, b) => b.createdAt.localeCompare(a.createdAt));

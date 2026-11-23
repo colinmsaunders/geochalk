@@ -6,7 +6,7 @@ The rename restarts architecture/schema numbering at v1. It preserves the predec
 
 ## Nine geographic levels
 
-A room is a geohash prefix of length 0–8. Browser room URLs use an @ marker: `/@` is Earth and `/@9q8yu` is room `9q8yu`. This separates rooms such as `/@qr` from QR URLs such as `/qr` and leaves other top-level paths available for site pages. API parameters and DynamoDB partition keys still use the plain geohash, with `_` representing the zero-length global prefix. Empty strings remain invalid room identifiers. A new post always has a precision-8 origin, regardless of the room being viewed. For origin `c23nb62w`, the nine copies are:
+A geographic room has a fixed latitude, longitude, and precision (1–8). Its URL uses the center's geohash and coordinate query parameters, for example `/@9q8yy?lat=37.775&lon=-122.419`. A legacy URL such as `/@9q8yy` uses that cell's midpoint. Earth stays at `/@` and uses the existing global partition, `_`. Storage keys remain plain geohash prefixes. A new post always has a precision-8 origin derived from the reported posting location. For origin `c23nb62w`, the nine copies are:
 
 | Precision | Room partition |
 | --------- | -------------- |
@@ -34,10 +34,12 @@ interface Post {
   displayName: string; // non-unique author name snapshot
   content: string; // trimmed plain text, 1–2,000 characters
   createdAt: string; // server ISO UTC creation timestamp
+  latitude?: number; // precise reported coordinate, optional on older posts
+  longitude?: number;
 }
 ```
 
-Every item contains all six fields plus `pk = roomPrefix`, `sk = slot`. The same post ID and payload are copied to all nine rooms. Identity is distinct from the slot: many unrelated posts can occupy that slot over time. Room copies contain the full payload and do not require archive lookups for reads.
+Each slot item contains the post plus `pk = roomPrefix` and `sk = slot`. The same post ID and payload are copied to all nine partitions. New public posts and their immutable archive copies include their original reported coordinates. Older posts use the midpoint of their stored precision-8 origin for geographic filtering.
 
 ## Storage, retention and concurrent writes
 
@@ -51,7 +53,9 @@ A room contains at most 256 posts, often fewer while filling. Under independent 
 
 ## Reading and moderation
 
-Read every Query page for the requested partition, following `LastEvaluatedKey` through the [DynamoDB 1 MB pagination boundary](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Query.Pagination.html). Query moderation markers separately, filter matching IDs, then sort by `createdAt` descending with `postId` descending as tie-breaker. Return all surviving posts (up to 256); normal full-room responses have no next-page cursor. The store retains room-bound timestamp/ID cursors for explicitly smaller pages. Cursor pagination is best effort, not a snapshot; concurrent writes can change subsequent pages. Strongly consistent individual queries do not create a multi-page snapshot. Sort-key order is never interpreted as recency.
+Centered reads intersect a rectangle with the geohash grid, clipping latitude at the poles and wrapping longitude. The API reads exactly the 256 active slot keys for each intersecting partition in parallel using DynamoDB BatchGetItem, split into batches of up to 100 keys. Each read also applies that partition's moderation markers. The API combines up to 1,024 candidates, filters by post coordinates, deduplicates by post ID, and returns the newest 256 surviving posts. These reads are not a multi-partition snapshot. The browser subscribes to the intersecting prefixes using existing WebSocket subscriptions and coalesces updates into fresh reads, including overwrites caused by posts outside the rectangle.
+
+The legacy prefix and Earth API still reads the partition with DynamoDB Query pagination. It keeps the existing room-bound timestamp/ID cursors for explicitly smaller pages.
 
 Deletion/reporting supplies `originGeohash` plus `postId`. The store looks up the original by full ID in the archive and verifies the supplied origin, even if every room copy has been evicted. Owner/moderator deletion first writes nine body-free moderation markers, then conditionally deletes each slot only if its `postId` still matches. Replacement posts survive. Markers also hide delayed replays of the deleted ID. Markers and reports have no expiry and can grow beyond the bounded post storage; this deliberate moderation metadata tradeoff needs future retention policy. Deletion never removes the archived original. Archive records are append-only, including deleted and moderated content; only room visibility changes. Missing archive records return 404. Ban admission blocks future posts; removing already published posts requires targeted deletion.
 
@@ -67,7 +71,7 @@ Before any slot write:
 2. Reject banned identities, control characters and more than five links.
 3. Enforce fixed-window atomic counters: 10 attempts per identity/minute and 30 per hashed connection IP/minute. Guest creation is limited to five per IP/minute; reports to five per identity/minute. Rejected later checks and failed publications can consume attempts. Windows can burst at boundaries.
 4. Check duplicate text within 30 seconds, implied motion above 350 m/s with a 10 km minimum allowance, and A→B→A round trips over 50 km within 15 minutes. Motion uses server receipt times, never client fix timestamps.
-5. Save at most three coarse precision-5 observations, uncertainty allowances, server receipt times and text hashes, expiring logically after 30 minutes. No raw GPS history is persisted. DynamoDB physical TTL deletion is asynchronous. The optional location-risk hook can integrate IP-geolocation evidence; no external service is configured or called.
+5. Save at most three coarse precision-5 observations, uncertainty allowances, server receipt times and text hashes, expiring logically after 30 minutes. The motion check stores coarse locations separately from the precise coordinates on published posts. DynamoDB physical TTL deletion is asynchronous.
 
 These are lightweight heuristics, not proof of physical presence. Guest resets and spoofed reports remain possible. Observation updates can race; rate counters are atomic but the whole admission sequence is not a transaction. API Gateway's connection IP behind CloudFront may be an edge IP: its limit is a conservative shared backstop, not verified viewer-IP protection. Do not trust arbitrary forwarded IP headers. Broad content classification, operational moderation and authenticated viewer-IP controls remain gaps. Request bodies and raw coordinates must not be logged.
 
@@ -81,4 +85,4 @@ The predecessor stacks and retained data stay intact. Historical schema-v2 copy 
 
 ## In-place 256-slot update
 
-The existing room/control tables and v1 resource identifiers stay in place. New posts use hex slot keys and enter the new append-only archive. No old records are copied, backfilled, propagated or deleted. Room queries exhaust DynamoDB pagination and ignore records whose stored slot does not match the new derivation. Legacy physical records can therefore add read work until separately removed; the 256 bound applies to current room slots and responses. Old unarchived posts are not available through archive-based moderation lookup. The browser downloads every surviving current post, up to 256, per refresh.
+The existing room/control tables and v1 resource identifiers stay in place. Posts use hex slot keys and enter the append-only archive. Centered reads address the existing slot keys directly. Legacy partition reads ignore records whose stored slot does not match the current derivation. Old unarchived posts are unavailable through archive-based moderation lookup.

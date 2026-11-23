@@ -1,4 +1,11 @@
-import { bounds, encode } from "@geochalk/shared";
+import {
+  bounds,
+  centeredRoomGeometry,
+  encode,
+  wrapLongitude,
+  type Coordinates,
+} from "@geochalk/shared";
+import type { RoomView } from "./routes";
 
 export function timeAgo(value: string, now = Date.now()): string {
   const seconds = Math.max(0, Math.floor((now - Date.parse(value)) / 1000));
@@ -17,14 +24,10 @@ export function timeAgo(value: string, now = Date.now()): string {
   return `${years} ${years === 1 ? "year" : "years"} ago`;
 }
 
-export function distanceAway(from: string, to: string): string {
-  if (from === to || to === "_") return "right here";
-  const center = (hash: string) => {
-    const b = bounds(hash);
-    return [(b.south + b.north) / 2, (b.west + b.east) / 2];
-  };
-  const [lat1, lon1] = center(from);
-  const [lat2, lon2] = center(to);
+export function distanceAway(
+  { lat: lat1, lon: lon1 }: Coordinates,
+  { lat: lat2, lon: lon2 }: Coordinates,
+): string {
   const radians = Math.PI / 180;
   const dLat = (lat2 - lat1) * radians;
   const dLon = (lon2 - lon1) * radians;
@@ -33,19 +36,21 @@ export function distanceAway(from: string, to: string): string {
     Math.cos(lat1 * radians) *
       Math.cos(lat2 * radians) *
       Math.sin(dLon / 2) ** 2;
-  const miles = 3958.7613 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const miles =
+    3958.7613 * 2 * Math.asin(Math.sqrt(Math.min(1, Math.max(0, a))));
   if (miles < 0.5) return "right here";
   const rounded = Math.round(miles);
   return `${rounded} ${rounded === 1 ? "mile" : "miles"} away`;
 }
 
-export function roomArea(room: string): string {
-  const cell = bounds(room);
+export function roomArea(room: RoomView): string {
+  const cell = room === "_" ? bounds("_") : centeredRoomGeometry(room).bounds;
+  const width = cell.east - cell.west;
   const radians = Math.PI / 180;
   const areaM2 =
     6_371_008.8 ** 2 *
     Math.abs(Math.sin(cell.north * radians) - Math.sin(cell.south * radians)) *
-    ((cell.east - cell.west) * radians);
+    ((width < 0 ? width + 360 : width) * radians);
   const squareMiles = areaM2 / 2_589_988.110336;
   const area = new Intl.NumberFormat("en-US", {
     maximumSignificantDigits: 2,
@@ -53,34 +58,29 @@ export function roomArea(room: string): string {
   return `${area} square miles`;
 }
 
-export function zoomInRoom(room: string): string {
-  const precision = room === "_" ? 0 : room.length;
-  if (precision >= 8) return room;
-  const cell = bounds(room);
-  return encode(
-    (cell.south + cell.north) / 2,
-    (cell.west + cell.east) / 2,
-    precision + 1,
-  );
+export function zoomInRoom(room: RoomView): RoomView {
+  if (room === "_") return { lat: 0, lon: 0, precision: 1 };
+  return { ...room, precision: Math.min(8, room.precision + 1) };
 }
 
-export function zoomOutRoom(room: string): string {
-  if (room === "_" || room.length === 1) return "_";
-  return room.slice(0, -1);
+export function zoomOutRoom(room: RoomView): RoomView {
+  if (room === "_" || room.precision === 1) return "_";
+  return { ...room, precision: room.precision - 1 };
 }
 
-export function moveRoom(room: string, east: number, north: number): string {
-  if (room === "_") return encode(north * 45, east * 90, 1);
-  const cell = bounds(room);
-  const latitude = Math.max(
-    -90,
-    Math.min(
-      90,
-      (cell.south + cell.north) / 2 + north * (cell.north - cell.south),
+export function moveRoom(
+  room: RoomView,
+  east: number,
+  north: number,
+): RoomView {
+  if (room === "_") return { lat: north * 45, lon: east * 90, precision: 1 };
+  const cell = bounds(encode(room.lat, room.lon, room.precision));
+  return {
+    lat: Math.max(
+      -90,
+      Math.min(90, room.lat + (north * (cell.north - cell.south)) / 2),
     ),
-  );
-  const longitude =
-    (cell.west + cell.east) / 2 + east * (cell.east - cell.west);
-  const wrappedLongitude = ((((longitude + 180) % 360) + 360) % 360) - 180;
-  return encode(latitude, wrappedLongitude, room.length);
+    lon: wrapLongitude(room.lon + (east * (cell.east - cell.west)) / 2),
+    precision: room.precision,
+  };
 }

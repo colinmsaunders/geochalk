@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  alphabet,
+  centeredRoomGeometry,
+  postCoordinates,
+  roomContains,
   postSlot,
+  type Coordinates,
   ROOM_CAPACITY,
   roomSchema,
   command,
@@ -14,7 +17,12 @@ import {
 import { api, ensureGuest } from "./api";
 import { Auth } from "./Auth";
 import { freshPostingLocation } from "./location";
-import { roomFromPath, roomPath } from "./routes";
+import {
+  roomViewFromUrl,
+  roomPath,
+  viewFromPrefix,
+  type RoomView,
+} from "./routes";
 import {
   distanceAway,
   moveRoom,
@@ -35,34 +43,47 @@ const places = [
   { name: "London", room: "gcpvj", label: "Across the pond" },
   { name: "Tokyo", room: "xn76u", label: "A different time zone" },
 ];
-const levels = [
-  "The whole world",
-  "A corner of the world",
-  "A region",
-  "A city & its neighbors",
-  "Around town",
-  "A neighborhood",
-  "A few blocks",
-  "Your street",
-  "A little closer",
-];
 function initialRoom() {
-  return roomFromPath(location.pathname);
+  return roomViewFromUrl(location.pathname, location.search);
 }
-function mergePosts(current: Post[], incoming: Post[]): Post[] {
-  const bySlot = new Map(current.map((post) => [postSlot(post.postId), post]));
-  for (const post of incoming) bySlot.set(postSlot(post.postId), post);
-  return [...bySlot.values()]
-    .sort(
-      (a, b) =>
-        b.createdAt.localeCompare(a.createdAt) ||
-        b.postId.localeCompare(a.postId),
-    )
-    .slice(0, ROOM_CAPACITY);
+
+function roomFeedPath(room: RoomView) {
+  if (room === "_") return "/rooms/_/messages";
+  const { lat, lon, precision } = room;
+  return `/posts?${new URLSearchParams({
+    lat: String(lat),
+    lon: String(lon),
+    precision: String(precision),
+  })}`;
 }
+
+function comparePosts(a: Post, b: Post) {
+  return (
+    b.createdAt.localeCompare(a.createdAt) || b.postId.localeCompare(a.postId)
+  );
+}
+
+function addPublishedPost(messages: Post[], post: Post, room: RoomView) {
+  const precision = room === "_" ? 0 : room.precision;
+  const partition = post.originGeohash.slice(0, precision);
+  const geometry = room === "_" ? undefined : centeredRoomGeometry(room);
+  if (geometry && !geometry.prefixes.includes(partition)) return messages;
+  const slot = postSlot(post.postId);
+  const surviving = messages.filter(
+    (existing) =>
+      existing.originGeohash.slice(0, precision) !== partition ||
+      postSlot(existing.postId) !== slot,
+  );
+  if (!geometry || roomContains(geometry.bounds, postCoordinates(post)))
+    surviving.push(post);
+  return surviving.sort(comparePosts).slice(0, ROOM_CAPACITY);
+}
+
 export default function App() {
   const [room, setRoom] = useState(initialRoom);
-  const prefix = room === "_" ? "" : room;
+  const prefix =
+    !room || room === "_" ? "" : encode(room.lat, room.lon, room.precision);
+  const [reader, setReader] = useState<Coordinates>();
   const [user, setUser] = useState<Identity>();
   const [roomName, setRoomName] = useState("");
   const [messages, setMessages] = useState<Post[]>([]);
@@ -70,7 +91,6 @@ export default function App() {
   const [reactions, setReactions] = useState<Record<string, { flag: boolean }>>(
     {},
   );
-  const [cursor, setCursor] = useState<string>();
   const [draft, setDraft] = useState("");
   const [join, setJoin] = useState("");
 
@@ -81,19 +101,15 @@ export default function App() {
   const [auth, setAuth] = useState(false);
   const [help, setHelp] = useState(false);
   const [locating, setLocating] = useState(false);
-  const [historyPage, setHistoryPage] = useState(false);
-  const historyMode = useRef(false);
+  const refreshFeed = useRef<(() => void) | undefined>(undefined);
+  const localPublication = useRef(0);
   const currentRoom = useRef(room);
   currentRoom.current = room;
-  const end = useRef<HTMLDivElement>(null);
   const postInput = useRef<HTMLTextAreaElement>(null);
   const joinInput = useRef<HTMLInputElement>(null);
-  const generation = useRef(0);
-  function go(next: string) {
+  function go(next: string | RoomView) {
     history.pushState({}, "", roomPath(next));
-    historyMode.current = false;
-    setHistoryPage(false);
-    setRoom(next);
+    setRoom(typeof next === "string" ? viewFromPrefix(next) : next);
     setNotice("");
     setError("");
   }
@@ -108,114 +124,131 @@ export default function App() {
     if (!room) locate();
     return () => window.removeEventListener("popstate", handler);
   }, []);
+  const browsing = Boolean(room);
+  useEffect(() => {
+    if (!browsing || !navigator.geolocation) return;
+    const watch = navigator.geolocation.watchPosition(
+      ({ coords }) =>
+        setReader({ lat: coords.latitude, lon: coords.longitude }),
+      () => setReader(undefined),
+      { maximumAge: 300000, timeout: 10000 },
+    );
+    return () => navigator.geolocation.clearWatch(watch);
+  }, [browsing]);
+
   useEffect(() => {
     if (!room) return;
-    const serial = ++generation.current;
-    let stopped = false;
-    historyMode.current = false;
-    setHistoryPage(false);
+    const controller = new AbortController();
+    const prefixes = room === "_" ? ["_"] : centeredRoomGeometry(room).prefixes;
+    const path = roomFeedPath(room);
+    const socketCleanup: (() => void)[] = [];
+    let refreshTimer: number | undefined;
+    let reading = false;
+    let dirty = false;
+    let loaded = false;
     setMessages([]);
     setPendingPosts([]);
-    setCursor(undefined);
     setLoading(true);
+
+    function schedule() {
+      dirty = true;
+      if (controller.signal.aborted || reading || refreshTimer !== undefined)
+        return;
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = undefined;
+        void refresh();
+      }, 150);
+    }
+
     async function refresh() {
+      reading = true;
+      dirty = false;
+      const publication = localPublication.current;
       try {
-        const page = await api<Page>(`/rooms/${room}/messages`);
-        if (stopped || serial !== generation.current || historyMode.current)
-          return;
-        setMessages((old) => mergePosts(old, page.posts));
-        setCursor(page.cursor);
+        const page = await api<Page>(path, { signal: controller.signal });
+        if (controller.signal.aborted) return;
+        if (publication === localPublication.current) setMessages(page.posts);
+        loaded = true;
       } catch (e) {
-        if (!stopped) setError((e as Error).message);
+        if (!controller.signal.aborted && !loaded)
+          setError((e as Error).message);
       } finally {
-        if (!stopped) setLoading(false);
+        reading = false;
+        if (!controller.signal.aborted) {
+          setLoading(false);
+          if (dirty) schedule();
+        }
       }
     }
-    void refresh();
-    return () => {
-      stopped = true;
-    };
-  }, [room]);
-  useEffect(() => {
-    if (!room) return;
-    let stopped = false;
-    let socket: WebSocket | undefined;
-    let reconnectTimer: number | undefined;
-    let retry = 0;
-    async function connectLive() {
-      try {
-        const { webSocketUrl } = await api<{ webSocketUrl: string }>("/live");
-        if (stopped) return;
-        socket = new WebSocket(
-          `${webSocketUrl}?room=${encodeURIComponent(room)}`,
-        );
-        socket.onopen = () => {
-          retry = 0;
-          if (historyMode.current) return;
-          void api<Page>(`/rooms/${room}/messages`)
-            .then((page) => {
-              if (stopped || historyMode.current) return;
-              setMessages((old) => mergePosts(old, page.posts));
-              setCursor(page.cursor);
-            })
-            .catch(() => undefined);
-        };
-        socket.onmessage = (event) => {
-          if (stopped || historyMode.current) return;
-          try {
-            const message = JSON.parse(String(event.data)) as {
-              type?: string;
-              post?: Post;
-            };
-            const post = message.post;
-            if (
-              message.type !== "post" ||
-              !post ||
-              typeof post.postId !== "string" ||
-              typeof post.originGeohash !== "string" ||
-              typeof post.content !== "string" ||
-              (room !== "_" && !post.originGeohash.startsWith(room))
-            )
-              return;
-            setMessages((old) => mergePosts(old, [post]));
-            setPendingPosts((old) =>
-              old.filter(
-                (pending) =>
-                  pending.content !== post.content ||
-                  pending.displayName !== post.displayName ||
-                  pending.authorId !== post.authorId,
-              ),
-            );
-          } catch {
-            // Ignore malformed live events.
-          }
-        };
-        socket.onclose = () => {
-          if (stopped) return;
-          const delay = Math.min(1000 * 2 ** retry, 30000);
-          retry += 1;
-          reconnectTimer = window.setTimeout(() => void connectLive(), delay);
-        };
-        socket.onerror = () => socket?.close();
-      } catch {
-        if (stopped) return;
+
+    function subscribe(webSocketUrl: string, partition: string) {
+      let socket: WebSocket | undefined;
+      let retry = 0;
+      let timer: number | undefined;
+      function reconnect() {
+        if (controller.signal.aborted) return;
         const delay = Math.min(1000 * 2 ** retry, 30000);
         retry += 1;
-        reconnectTimer = window.setTimeout(() => void connectLive(), delay);
+        timer = window.setTimeout(connect, delay);
+      }
+      function connect() {
+        if (controller.signal.aborted) return;
+        try {
+          const connection = new WebSocket(
+            `${webSocketUrl}?room=${encodeURIComponent(partition)}`,
+          );
+          socket = connection;
+          connection.onopen = () => {
+            retry = 0;
+            schedule();
+          };
+          // An out-of-bounds post can still overwrite a visible slot. Re-read
+          // the authoritative snapshot so evictions and newly visible posts agree.
+          connection.onmessage = schedule;
+          connection.onclose = reconnect;
+          connection.onerror = () => connection.close();
+        } catch {
+          reconnect();
+        }
+      }
+      socketCleanup.push(() => {
+        if (timer !== undefined) window.clearTimeout(timer);
+        socket?.close();
+      });
+      connect();
+    }
+
+    let discoveryTimer: number | undefined;
+    async function connectLive() {
+      try {
+        const { webSocketUrl } = await api<{ webSocketUrl: string }>("/live", {
+          signal: controller.signal,
+        });
+        if (!controller.signal.aborted) {
+          for (const partition of prefixes) subscribe(webSocketUrl, partition);
+        }
+      } catch {
+        if (!controller.signal.aborted)
+          discoveryTimer = window.setTimeout(connectLive, 5000);
       }
     }
+
+    refreshFeed.current = schedule;
+    void refresh();
     void connectLive();
     return () => {
-      stopped = true;
-      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
-      socket?.close();
+      controller.abort();
+      refreshFeed.current = undefined;
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+      if (discoveryTimer !== undefined) window.clearTimeout(discoveryTimer);
+      for (const cleanup of socketCleanup) cleanup();
     };
   }, [room]);
   useEffect(() => {
     setRoomName("");
-    if (!room || room === "_") return;
+    if (!prefix) return;
     let stopped = false;
-    api<{ name: string }>(`/rooms/${room}/geoname`)
+    api<{ name: string }>(`/rooms/${prefix}/geoname`)
       .then((place) => {
         if (!stopped) setRoomName(place.name);
       })
@@ -223,7 +256,7 @@ export default function App() {
     return () => {
       stopped = true;
     };
-  }, [room]);
+  }, [prefix]);
   async function locate() {
     setLocating(true);
     setNotice("Finding a conversation near you…");
@@ -236,11 +269,17 @@ export default function App() {
             })
           : reject(Error("Location unavailable")),
       );
-      const hash = encode(pos.coords.latitude, pos.coords.longitude);
+      const center = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+      setReader(center);
+      const hash = encode(center.lat, center.lon);
       const result = await api<{ room: string }>(
         `/rooms/suggest?geohash=${hash}`,
       );
-      go(result.room);
+      go(
+        result.room === "_"
+          ? "_"
+          : { ...center, precision: result.room.length },
+      );
       window.requestAnimationFrame(() => postInput.current?.focus());
     } catch {
       setNotice(
@@ -257,7 +296,22 @@ export default function App() {
     const submittedText = draft;
     let pendingId: string | undefined;
     try {
-      const cmd = command(draft.trim(), room);
+      const verb = submittedText.trim();
+      if (verb === "/in" || verb === "/out") {
+        if (
+          (verb === "/in" && room !== "_" && room.precision === 8) ||
+          (verb === "/out" && room === "_")
+        )
+          throw new Error(
+            verb === "/in"
+              ? "Already at maximum precision."
+              : "Already at the widest room.",
+          );
+        go(verb === "/in" ? zoomInRoom(room) : zoomOutRoom(room));
+        setDraft("");
+        return;
+      }
+      const cmd = command(submittedText.trim(), prefix || "_");
       if (cmd) {
         if (cmd.kind === "go") go(cmd.room);
         if (cmd.kind === "help") setHelp(true);
@@ -277,7 +331,7 @@ export default function App() {
       pendingId = encodePostId(crypto.getRandomValues(new Uint8Array(20)));
       const pending: Post = {
         postId: pendingId,
-        originGeohash: (room === "_" ? "" : room).padEnd(8, "0"),
+        originGeohash: prefix.padEnd(8, "0"),
         authorId: user?.id ?? "guest:pending",
         displayName: user?.name ?? "You",
         content,
@@ -286,10 +340,19 @@ export default function App() {
       setPendingPosts((old) => [pending, ...old]);
       setDraft("");
       const location = await freshPostingLocation();
-      const originGeohash = encode(location.latitude, location.longitude, 8);
+      const position = { lat: location.latitude, lon: location.longitude };
+      setReader(position);
+      const originGeohash = encode(position.lat, position.lon);
       setPendingPosts((old) =>
         old.map((post) =>
-          post.postId === pendingId ? { ...post, originGeohash } : post,
+          post.postId === pendingId
+            ? {
+                ...post,
+                originGeohash,
+                latitude: position.lat,
+                longitude: position.lon,
+              }
+            : post,
         ),
       );
       const result = await api<Post>("/messages", {
@@ -303,21 +366,11 @@ export default function App() {
       setNotice(
         `Posted from #${result.originGeohash}. Your viewing room does not determine where you post.`,
       );
-      if (
-        currentRoom.current &&
-        (currentRoom.current === "_" ||
-          result.originGeohash.startsWith(currentRoom.current)) &&
-        !historyMode.current
-      ) {
-        setMessages((old) => mergePosts(old, [result]));
-        setTimeout(
-          () =>
-            end.current?.scrollIntoView({
-              behavior: "smooth",
-              block: "nearest",
-            }),
-          30,
-        );
+      const viewedRoom = currentRoom.current;
+      if (viewedRoom) {
+        localPublication.current++;
+        setMessages((old) => addPublishedPost(old, result, viewedRoom));
+        refreshFeed.current?.();
       }
     } catch (e) {
       if (pendingId)
@@ -355,27 +408,19 @@ export default function App() {
       setError((e as Error).message);
     }
   }
-  async function older() {
-    const destination = room;
-    try {
-      const page = await api<Page>(
-        `/rooms/${room}/messages?cursor=${encodeURIComponent(cursor!)}`,
-      );
-      if (currentRoom.current !== destination) return;
-      historyMode.current = true;
-      setHistoryPage(true);
-      setMessages(page.posts);
-      setCursor(page.cursor);
-      setNotice("Browsing older messages. Return to live to see new messages.");
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  }
-  const sorted = [...messages, ...pendingPosts].sort(
-    (a, b) =>
-      b.createdAt.localeCompare(a.createdAt) ||
-      b.postId.localeCompare(a.postId),
-  );
+  const sorted = [
+    ...messages,
+    ...pendingPosts.filter(
+      (pending) =>
+        !messages.some(
+          (post) =>
+            post.content === pending.content &&
+            post.authorId === pending.authorId &&
+            post.originGeohash === pending.originGeohash &&
+            post.createdAt >= pending.createdAt,
+        ),
+    ),
+  ].sort(comparePosts);
   return (
     <div className="site">
       <main className="main-page container flex-grow-1 py-4">
@@ -391,21 +436,22 @@ export default function App() {
               >
                 @
               </a>
-              {Array.from(prefix, (character, index) => {
-                const level = prefix.slice(0, index + 1);
-                return (
-                  <a
-                    key={level}
-                    href={roomPath(level)}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      go(level);
-                    }}
-                  >
-                    {character}
-                  </a>
-                );
-              })}
+              {room !== "_" &&
+                Array.from(prefix, (character, index) => {
+                  const level = { ...room, precision: index + 1 };
+                  return (
+                    <a
+                      key={index}
+                      href={roomPath(level)}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        go(level);
+                      }}
+                    >
+                      {character}
+                    </a>
+                  );
+                })}
               {room !== "_" && roomName && <> &mdash; {roomName}</>}
             </h1>
             <nav
@@ -425,7 +471,7 @@ export default function App() {
                   zoom out
                 </a>
               )}
-              {room.length < 8 && (
+              {(room === "_" || room.precision < 8) && (
                 <>
                   <span aria-hidden="true">·</span>
                   <a
@@ -482,6 +528,7 @@ export default function App() {
                 value={draft}
                 maxLength={2000}
                 placeholder="Write here. Right now."
+                aria-describedby="post-location-disclosure"
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={(event) => {
                   if (
@@ -502,6 +549,9 @@ export default function App() {
                 {sending ? "sending" : "geochalk"}
               </button>
             </form>
+            <small id="post-location-disclosure">
+              Posting shares your precise location.
+            </small>
             <ul
               className="posts-list list-group list-group-flush"
               aria-live="polite"
@@ -511,7 +561,7 @@ export default function App() {
                   Loading…
                 </li>
               )}
-              {!loading &&
+              {(!loading || pendingPosts.length > 0) &&
                 sorted.map((post) => {
                   const pending = pendingPosts.some(
                     (item) => item.postId === post.postId,
@@ -520,9 +570,11 @@ export default function App() {
                     flag: false,
                   };
                   const age = pending ? "just now" : timeAgo(post.createdAt);
+                  const position = postCoordinates(post);
+                  const postRoom = { ...position, precision: 8 };
                   const distance = pending
                     ? "right here"
-                    : distanceAway(post.originGeohash, room);
+                    : reader && distanceAway(position, reader);
                   return (
                     <li
                       className="post list-group-item bg-transparent text-body px-0"
@@ -530,11 +582,11 @@ export default function App() {
                     >
                       <a
                         className="post-location post-context"
-                        href={roomPath(post.originGeohash)}
+                        href={roomPath(postRoom)}
                         aria-label={`Open room ${post.originGeohash}`}
                         onClick={(event) => {
                           event.preventDefault();
-                          go(post.originGeohash);
+                          go(postRoom);
                         }}
                       >
                         ⊙
@@ -548,7 +600,9 @@ export default function App() {
                       <span className="post-context">
                         {distance === "right here" && age === "just now"
                           ? ", right here, right now"
-                          : `, ${distance}, ${age}`}
+                          : distance
+                            ? `, ${age}, ${distance}`
+                            : `, ${age}`}
                       </span>
                       <sup
                         className={`post-actions ${state.flag ? "is-active" : ""}`}

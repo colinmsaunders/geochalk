@@ -84,25 +84,50 @@ it("exposes the live endpoint and publishes saved posts", async () => {
   expect(posted.status).toBe(201);
   expect(publishPost).toHaveBeenCalledWith(posted.body);
 });
-it("posts by server-derived location independent of viewed room and stores no raw GPS", async () => {
+it("stores the posting fix independent of the viewed room without storing raw GPS history", async () => {
   const { request, store } = await setup();
-  await request("GET", "/rooms/u10/messages");
+  await request("GET", "/posts?lat=51.5&lon=-0.12&precision=5");
+  const location = locationFor("9q8yyk8y");
   const result = await request("POST", "/messages", {
     content: "Here",
     room: "u10",
-    location: locationFor("9q8yyk8y"),
+    location,
   });
   expect(result.status).toBe(201);
   expect(result.body).toMatchObject({
     originGeohash: "9q8yyk8y",
     content: "Here",
+    latitude: location.latitude,
+    longitude: location.longitude,
+  });
+  const localFeed = await request(
+    "GET",
+    `/posts?lat=${location.latitude}&lon=${location.longitude}&precision=5`,
+  );
+  expect(localFeed).toMatchObject({
+    status: 200,
+    body: { count: 1, posts: [result.body] },
+  });
+  const remoteFeed = await request(
+    "GET",
+    "/posts?lat=51.5&lon=-0.12&precision=5",
+  );
+  expect(remoteFeed).toMatchObject({
+    status: 200,
+    body: { count: 0, posts: [] },
   });
   expect((await store.list("u10")).posts).toEqual([]);
   expect(store.rooms.size).toBe(9);
-  for (const room of store.rooms.values())
-    expect(JSON.stringify([...room.values()])).not.toMatch(
-      /latitude|longitude|accuracy|timestamp/,
-    );
+  for (const room of store.rooms.values()) {
+    const posts = [...room.values()];
+    expect(posts).toEqual([result.body]);
+    expect(posts[0]).not.toHaveProperty("accuracy");
+    expect(posts[0]).not.toHaveProperty("timestamp");
+  }
+  expect([...store.archive.values()]).toEqual([result.body]);
+  expect(JSON.stringify([...store.history.values()])).not.toMatch(
+    /latitude|longitude/,
+  );
   expect([...store.history.values()][0].observations[0].geohash).toHaveLength(
     5,
   );
