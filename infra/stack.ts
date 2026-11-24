@@ -327,8 +327,10 @@ export class ChatStack extends cdk.Stack {
       }
     };
   }
+  var p = r.querystring && r.querystring.p;
   if (r.uri === '/about' || r.uri === '/about/') r.uri = '/about.html';
-  else if (r.uri === '/' || /^\/@([0-9bcdefghjkmnpqrstuvwxyz]{0,8})\/?$/.test(r.uri)) r.uri = '/index.html';
+  else if (r.uri === '/' || /^\/@[0-9bcdefghjkmnpqrstuvwxyz]{0,8}\/?$/.test(r.uri) ||
+    (p && /^[1-8]$/.test(p.value) && /^\/@[0-9bcdefghjkmnpqrstuvwxyz]+\/?$/.test(r.uri))) r.uri = '/index.html';
   return r;
 }`,
       ),

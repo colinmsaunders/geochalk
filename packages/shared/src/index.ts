@@ -1,7 +1,8 @@
 import { z } from "zod";
+import { alphabet, encode } from "./geohash";
+export * from "./geohash";
 export { generateDisplayName, nameWords } from "./names";
 export * from "./rooms";
-export const alphabet = "0123456789bcdefghjkmnpqrstuvwxyz";
 export const roomSchema = z
   .string()
   .regex(
@@ -95,71 +96,6 @@ export function ancestors(room: string): string[] {
         "_",
         ...Array.from({ length: room.length }, (_, i) => room.slice(0, i + 1)),
       ];
-}
-export function encode(lat: number, lon: number, precision = 8): string {
-  if (
-    !Number.isFinite(lat) ||
-    !Number.isFinite(lon) ||
-    lat < -90 ||
-    lat > 90 ||
-    lon < -180 ||
-    lon > 180 ||
-    !Number.isInteger(precision) ||
-    precision < 0 ||
-    precision > 8
-  )
-    throw new Error("Invalid coordinates or precision");
-  if (precision === 0) return "_";
-  let south = -90,
-    north = 90,
-    west = -180,
-    east = 180,
-    even = true,
-    bits = 0,
-    value = 0,
-    hash = "";
-  while (hash.length < precision) {
-    const mid = even ? (west + east) / 2 : (south + north) / 2;
-    const high = (even ? lon : lat) >= mid;
-    value = (value << 1) + (high ? 1 : 0);
-    if (even) {
-      if (high) west = mid;
-      else east = mid;
-    } else {
-      if (high) south = mid;
-      else north = mid;
-    }
-    even = !even;
-    if (++bits === 5) {
-      hash += alphabet[value];
-      bits = 0;
-      value = 0;
-    }
-  }
-  return hash;
-}
-export function bounds(room: string) {
-  roomSchema.parse(room);
-  let south = -90,
-    north = 90,
-    west = -180,
-    east = 180,
-    even = true;
-  for (const c of room === "_" ? "" : room) {
-    const value = alphabet.indexOf(c);
-    for (let mask = 16; mask; mask >>= 1) {
-      const mid = even ? (west + east) / 2 : (south + north) / 2;
-      if (even) {
-        if (value & mask) west = mid;
-        else east = mid;
-      } else {
-        if (value & mask) south = mid;
-        else north = mid;
-      }
-      even = !even;
-    }
-  }
-  return { south, north, west, east };
 }
 export function chooseRoom(
   hash: string,

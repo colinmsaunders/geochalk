@@ -20,13 +20,15 @@ import { freshPostingLocation } from "./location";
 import {
   roomViewFromUrl,
   roomPath,
-  viewFromPrefix,
+  roomFeedPath,
+  areaUnitFromSearch,
   type RoomView,
 } from "./routes";
 import {
   distanceAway,
+  formatCoordinates,
   moveRoom,
-  roomArea,
+  roomSideLength,
   timeAgo,
   zoomInRoom,
   zoomOutRoom,
@@ -45,16 +47,6 @@ const places = [
 ];
 function initialRoom() {
   return roomViewFromUrl(location.pathname, location.search);
-}
-
-function roomFeedPath(room: RoomView) {
-  if (room === "_") return "/rooms/_/messages";
-  const { lat, lon, precision } = room;
-  return `/posts?${new URLSearchParams({
-    lat: String(lat),
-    lon: String(lon),
-    precision: String(precision),
-  })}`;
 }
 
 function comparePosts(a: Post, b: Post) {
@@ -81,6 +73,10 @@ function addPublishedPost(messages: Post[], post: Post, room: RoomView) {
 
 export default function App() {
   const [room, setRoom] = useState(initialRoom);
+  const [areaUnit, setAreaUnit] = useState(() =>
+    areaUnitFromSearch(location.search),
+  );
+  const viewPath = (next: string | RoomView) => roomPath(next, areaUnit);
   const prefix =
     !room || room === "_" ? "" : encode(room.lat, room.lon, room.precision);
   const [reader, setReader] = useState<Coordinates>();
@@ -108,13 +104,16 @@ export default function App() {
   const postInput = useRef<HTMLTextAreaElement>(null);
   const joinInput = useRef<HTMLInputElement>(null);
   function go(next: string | RoomView) {
-    history.pushState({}, "", roomPath(next));
-    setRoom(typeof next === "string" ? viewFromPrefix(next) : next);
+    history.pushState({}, "", viewPath(next));
+    setRoom(initialRoom());
     setNotice("");
     setError("");
   }
   useEffect(() => {
-    const handler = () => setRoom(initialRoom());
+    const handler = () => {
+      setRoom(initialRoom());
+      setAreaUnit(areaUnitFromSearch(location.search));
+    };
     window.addEventListener("popstate", handler);
     if (room) postInput.current?.focus();
     else joinInput.current?.focus();
@@ -427,71 +426,44 @@ export default function App() {
         {room ? (
           <>
             <h1 className="room-title h3 mb-5">
-              <a
-                href={roomPath("_")}
-                onClick={(event) => {
-                  event.preventDefault();
-                  go("_");
-                }}
-              >
-                @
+              <a href={viewPath(room)}>
+                @{prefix}
+                {room === "_" ? " — Earth" : roomName && ` — ${roomName}`}
               </a>
-              {room !== "_" &&
-                Array.from(prefix, (character, index) => {
-                  const level = { ...room, precision: index + 1 };
-                  return (
-                    <a
-                      key={index}
-                      href={roomPath(level)}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        go(level);
-                      }}
-                    >
-                      {character}
-                    </a>
-                  );
-                })}
-              {room !== "_" && roomName && <> &mdash; {roomName}</>}
             </h1>
-            <nav
-              className="room-controls"
-              aria-label="Room size and navigation"
-            >
-              <span>{roomArea(room)}</span>
-              <span aria-hidden="true">·</span>
+            <nav className="room-controls" aria-label="Room navigation">
+              {(room === "_" || room.precision < 8) && (
+                <a
+                  href={viewPath(zoomInRoom(room))}
+                  aria-label="Zoom in"
+                  title="Zoom in"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    go(zoomInRoom(room));
+                  }}
+                >
+                  +
+                </a>
+              )}
               {room !== "_" && (
                 <a
-                  href={roomPath(zoomOutRoom(room))}
+                  href={viewPath(zoomOutRoom(room))}
+                  aria-label="Zoom out"
+                  title="Zoom out"
                   onClick={(event) => {
                     event.preventDefault();
                     go(zoomOutRoom(room));
                   }}
                 >
-                  zoom out
+                  -
                 </a>
               )}
-              {(room === "_" || room.precision < 8) && (
-                <>
-                  <span aria-hidden="true">·</span>
-                  <a
-                    href={roomPath(zoomInRoom(room))}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      go(zoomInRoom(room));
-                    }}
-                  >
-                    zoom in
-                  </a>
-                </>
-              )}
-              <span aria-hidden="true">·</span>
               {directions.map(({ label, east, north, name }) => {
                 const nextRoom = moveRoom(room, east, north);
                 return (
                   <a
                     key={name}
-                    href={roomPath(nextRoom)}
+                    href={viewPath(nextRoom)}
                     aria-label={`Move ${name.toLowerCase()}`}
                     title={`Move ${name.toLowerCase()}`}
                     onClick={(event) => {
@@ -503,6 +475,11 @@ export default function App() {
                   </a>
                 );
               })}
+              <span aria-hidden="true">·</span>
+              <span>
+                {room !== "_" && `${formatCoordinates(room)} `}±{" "}
+                {roomSideLength(room, areaUnit)}
+              </span>
             </nav>
             {error && (
               <p className="alert alert-danger py-2" role="alert">
@@ -528,7 +505,6 @@ export default function App() {
                 value={draft}
                 maxLength={2000}
                 placeholder="Write here. Right now."
-                aria-describedby="post-location-disclosure"
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={(event) => {
                   if (
@@ -549,9 +525,6 @@ export default function App() {
                 {sending ? "sending" : "geochalk"}
               </button>
             </form>
-            <small id="post-location-disclosure">
-              Posting shares your precise location.
-            </small>
             <ul
               className="posts-list list-group list-group-flush"
               aria-live="polite"
@@ -582,7 +555,7 @@ export default function App() {
                     >
                       <a
                         className="post-location post-context"
-                        href={roomPath(postRoom)}
+                        href={viewPath(postRoom)}
                         aria-label={`Open room ${post.originGeohash}`}
                         onClick={(event) => {
                           event.preventDefault();
@@ -656,7 +629,7 @@ export default function App() {
                 <a
                   className="link-info"
                   key={place.room}
-                  href={roomPath(place.room)}
+                  href={viewPath(place.room)}
                   onClick={(event) => {
                     event.preventDefault();
                     go(place.room);

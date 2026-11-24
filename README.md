@@ -28,7 +28,8 @@ npm run synth
 
 ## Included in Milestone 1
 
-- React/Vite frontend with fixed room centers in shareable URLs such as `/@9q8yy?lat=37.775&lon=-122.419`. Legacy geohash URLs use their cell centers. Earth stays at `/@`.
+- React/Vite frontend with fixed room centers in shareable URLs such as `/@9q8yyk9pqd3s?p=5`. The geohash encodes the center and `p` sets the zoom from 1 to 8. Earth stays at `/@`.
+- The navigation row shows the side length of a square with the same area, rounded down to whole feet. Add `unit=meters` to the room URL query to display whole meters.
 - Public room reads, WebSocket updates, guest sessions, optional Cognito email accounts and slash commands. Room navigation preserves the center on zoom and moves by half a cell with each arrow.
 - Server-derived precision-8 posting origins, fresh location checks, persistent HttpOnly guest cookies, and short-lived coarse observations for motion checks.
 - Nine unconditional denormalized writes into independent rooms. Each room has 256 random hexadecimal slots; collisions replace posts without chronological eviction or post TTL.

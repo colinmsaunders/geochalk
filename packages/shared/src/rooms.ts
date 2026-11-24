@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { bounds, encode, type Post } from "./index";
+import { bounds, encode, geohashSchema } from "./geohash";
+import type { Post } from "./index";
 
 const coordinatesSchema = z.object({
   lat: z.number().min(-90).max(90),
@@ -104,6 +105,10 @@ export function postCoordinates(post: Post): Coordinates {
 }
 
 export function parseRoomQuery(query: URLSearchParams) {
+  if (query.has("geohash") || query.has("p")) {
+    return roomFromGeohash(query.get("geohash"), query.get("p"));
+  }
+  // Keep existing coordinate-based clients working during the URL transition.
   const number = (key: string) => {
     const text = query.get(key);
     return text && /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(text)
@@ -115,4 +120,17 @@ export function parseRoomQuery(query: URLSearchParams) {
     lon: number("lon"),
     precision: number("precision"),
   });
+}
+
+const geohashRoomSchema = z.object({
+  geohash: geohashSchema,
+  p: z.string().regex(/^[1-8]$/, "Use p=1 through p=8 for room precision."),
+});
+
+export function roomFromGeohash(geohash: unknown, p: unknown): Room {
+  const { geohash: center, p: precision } = geohashRoomSchema.parse({
+    geohash,
+    p,
+  });
+  return { ...geohashCenter(center), precision: Number(precision) };
 }

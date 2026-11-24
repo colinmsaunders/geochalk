@@ -104,6 +104,12 @@ describe("centered room geometry", () => {
     "lat=0&lon=0&precision=9",
     "lat=0&lon=0&precision=0",
     "lat=0x1&lon=0&precision=5",
+    "geohash=9q8yy",
+    "geohash=9q8yy&p=0",
+    "geohash=9q8yy&p=9",
+    "geohash=9q8yy&p=2.5",
+    "geohash=bad&p=5",
+    "p=5",
   ])("rejects invalid query %s", (input) => {
     expect(() => parseRoomQuery(new URLSearchParams(input))).toThrow();
   });

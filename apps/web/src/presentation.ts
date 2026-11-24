@@ -43,19 +43,69 @@ export function distanceAway(
   return `${rounded} ${rounded === 1 ? "mile" : "miles"} away`;
 }
 
-export function roomArea(room: RoomView): string {
+export type AreaUnit = "miles" | "meters";
+const metersPerFoot = 0.3048;
+
+export function formatCoordinates({ lat, lon }: Coordinates): string {
+  const latitude = `${Math.abs(lat).toFixed(4)}° ${lat < 0 ? "S" : "N"}`;
+  const longitude = `${Math.abs(lon).toFixed(4)}° ${lon < 0 ? "W" : "E"}`;
+  return `${latitude}, ${longitude}`;
+}
+
+function roomAreaM2(room: RoomView): number {
   const cell = room === "_" ? bounds("_") : centeredRoomGeometry(room).bounds;
   const width = cell.east - cell.west;
   const radians = Math.PI / 180;
-  const areaM2 =
+  return (
     6_371_008.8 ** 2 *
     Math.abs(Math.sin(cell.north * radians) - Math.sin(cell.south * radians)) *
-    ((width < 0 ? width + 360 : width) * radians);
-  const squareMiles = areaM2 / 2_589_988.110336;
+    ((width < 0 ? width + 360 : width) * radians)
+  );
+}
+
+export function roomArea(room: RoomView, unit: AreaUnit = "miles"): string {
+  return formatArea(roomAreaM2(room), unit, "abbreviated");
+}
+
+export function roomSideLength(
+  room: RoomView,
+  unit: AreaUnit = "miles",
+): string {
+  const meters = Math.sqrt(roomAreaM2(room));
+  const length = Math.floor(
+    unit === "meters" ? meters : meters / metersPerFoot,
+  );
+  return `${length.toLocaleString("en-US")} ${unit === "meters" ? "m" : "ft"}`;
+}
+
+export function formatArea(
+  areaM2: number,
+  unit: AreaUnit = "miles",
+  notation: "words" | "abbreviated" = "words",
+): string {
+  const squareMile = 2_589_988.110336;
+  let value: number;
+  let singular: string;
+  let plural: string;
+  let abbreviation: string;
+  if (unit === "meters") {
+    [value, singular, plural, abbreviation] =
+      areaM2 < 1_000_000
+        ? [areaM2, "meter", "meters", "m"]
+        : [areaM2 / 1_000_000, "kilometer", "kilometers", "km"];
+  } else {
+    [value, singular, plural, abbreviation] =
+      areaM2 < squareMile
+        ? [areaM2 / metersPerFoot ** 2, "foot", "feet", "ft"]
+        : [areaM2 / squareMile, "mile", "miles", "mi"];
+  }
   const area = new Intl.NumberFormat("en-US", {
     maximumSignificantDigits: 2,
-  }).format(squareMiles);
-  return `${area} square miles`;
+  }).format(value);
+  const label = area === "1" ? singular : plural;
+  return notation === "abbreviated"
+    ? `${area} ${abbreviation}²`
+    : `${area} square ${label}`;
 }
 
 export function zoomInRoom(room: RoomView): RoomView {

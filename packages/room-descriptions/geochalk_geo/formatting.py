@@ -17,6 +17,25 @@ def rounded_area(value: float) -> str:
     return result.rstrip("0").rstrip(".") if "." in result else result
 
 
+def format_area(cell: Cell, unit: Literal["miles", "meters"] = "miles") -> str:
+    if unit == "miles":
+        area = cell.area("miles")
+        if area < 1:
+            area, singular, plural = area * 5280**2, "foot", "feet"
+        else:
+            singular, plural = "mile", "miles"
+    elif unit == "meters":
+        area = cell.area_m2
+        if area < 1_000_000:
+            singular, plural = "meter", "meters"
+        else:
+            area, singular, plural = area / 1_000_000, "kilometer", "kilometers"
+    else:
+        raise ValueError("unit must be 'miles' or 'meters'")
+    rounded = rounded_area(area)
+    return f"{rounded} square {singular if rounded == '1' else plural}"
+
+
 def relationship(cell: Cell, place: Place) -> str:
     lat, lon = cell.center
     distance = distance_km(place.latitude, place.longitude, lat, lon)
@@ -41,13 +60,6 @@ def format_description(
     *,
     spatial_relation: str | None = None,
 ) -> str:
-    if unit == "miles":
-        area, label = cell.area("miles"), "square miles"
-    elif unit == "meters":
-        area, label = cell.area_m2, "square meters"
-        if area >= 1_000_000:
-            area, label = area / 1_000_000, "square kilometers"
-    else:
-        raise ValueError("unit must be 'miles' or 'meters'")
+    area = format_area(cell, unit)
     relation = spatial_relation or relationship(cell, place)
-    return f"{rounded_area(area)} {label} {relation} {place.name}"
+    return f"{area} {relation} {place.name}"

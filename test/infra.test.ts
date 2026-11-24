@@ -85,6 +85,11 @@ describe("AWS deployment guardrails", () => {
       "/@9q8yyk8y",
     ])
       expect(route({ request: { uri } }).uri).toBe("/index.html");
+    expect(
+      route({
+        request: { uri: "/@9q8yyk9pqd3s", querystring: { p: { value: "5" } } },
+      }).uri,
+    ).toBe("/index.html");
     for (const uri of ["/about", "/about/"])
       expect(route({ request: { uri } }).uri).toBe("/about.html");
     for (const uri of [

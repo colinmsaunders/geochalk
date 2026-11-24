@@ -86,7 +86,7 @@ it("exposes the live endpoint and publishes saved posts", async () => {
 });
 it("stores the posting fix independent of the viewed room without storing raw GPS history", async () => {
   const { request, store } = await setup();
-  await request("GET", "/posts?lat=51.5&lon=-0.12&precision=5");
+  await request("GET", "/posts?geohash=gcpvj&p=5");
   const location = locationFor("9q8yyk8y");
   const result = await request("POST", "/messages", {
     content: "Here",
@@ -100,18 +100,12 @@ it("stores the posting fix independent of the viewed room without storing raw GP
     latitude: location.latitude,
     longitude: location.longitude,
   });
-  const localFeed = await request(
-    "GET",
-    `/posts?lat=${location.latitude}&lon=${location.longitude}&precision=5`,
-  );
+  const localFeed = await request("GET", "/posts?geohash=9q8yyk8y&p=5");
   expect(localFeed).toMatchObject({
     status: 200,
     body: { count: 1, posts: [result.body] },
   });
-  const remoteFeed = await request(
-    "GET",
-    "/posts?lat=51.5&lon=-0.12&precision=5",
-  );
+  const remoteFeed = await request("GET", "/posts?geohash=gcpvj&p=5");
   expect(remoteFeed).toMatchObject({
     status: 200,
     body: { count: 0, posts: [] },

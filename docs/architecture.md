@@ -6,7 +6,7 @@ The rename restarts architecture/schema numbering at v1. It preserves the predec
 
 ## Nine geographic levels
 
-A geographic room has a fixed latitude, longitude, and precision (1–8). Its URL uses the center's geohash and coordinate query parameters, for example `/@9q8yy?lat=37.775&lon=-122.419`. A legacy URL such as `/@9q8yy` uses that cell's midpoint. Earth stays at `/@` and uses the existing global partition, `_`. Storage keys remain plain geohash prefixes. A new post always has a precision-8 origin derived from the reported posting location. For origin `c23nb62w`, the nine copies are:
+A geographic room has a fixed center and zoom. In `/@9q8yyk9pqd3s?p=5`, the geohash midpoint is the center and `p` sets the zoom from 1 to 8, independent of the center geohash's length. New centers generated from coordinates use 12 geohash characters. A legacy URL such as `/@9q8yy` uses that cell's midpoint and zoom. Older coordinate query links also work. Earth stays at `/@` and uses the existing global partition, `_`. Storage keys remain plain geohash prefixes. A new post always has a precision-8 origin derived from the reported posting location. For origin `c23nb62w`, the nine copies are:
 
 | Precision | Room partition |
 | --------- | -------------- |

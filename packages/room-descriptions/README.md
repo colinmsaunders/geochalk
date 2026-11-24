@@ -135,7 +135,7 @@ Type pools favor regions/countries/oceans at levels 1–2, cities/metropolitan p
 
 Use `--config path.json` to override `BuildConfig` fields: `target_places`, `candidates`, `importance_weight`, population/type/prominence weights, `type_scores`, dedup radii and remote thresholds. Source manifests and full configuration are recorded in metadata.
 
-Cell area uses exactly the specified sphere with radius **6,371,008.8 m**, integrating sine latitude between geohash parallels. It does not use planar width-times-height or a constant area per precision. Miles means square miles. Meters means square meters below 1,000,000 m², otherwise square kilometers. Formatting rounds half-up to roughly two significant digits and never displays zero for a positive cell area.
+Cell area integrates sine latitude between geohash parallels on a sphere with radius **6,371,008.8 m**. The default `unit="miles"` uses square feet below 1 square mile and square miles otherwise. Use `unit="meters"` for square meters below 1 square kilometer and square kilometers otherwise. Formatting rounds half-up to two significant digits.
 
 For precomputed anchors, bearing is from the selected place to the **requested** room center. `around` means the point is in the cell or within 10% of its linear scale. `near` covers nearby points or unstable polar/antipodal bearings, and other cases use eight compass directions. Precision-7 descriptions say `in` for a polygon containing the room center and `near` for a nearby point.
 
